@@ -1,0 +1,6 @@
+{
+  "name": "Πρόγραμμα Σχολείου",
+  "description": "Εφαρμογή δημιουργίας και ελέγχου ωρολογίου προγράμματος εκπαιδευτικών με αυτόματους ελέγχους λαθών.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
