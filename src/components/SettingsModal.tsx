@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { X, Plus, Trash2, Save } from 'lucide-react';
-import { Teacher } from '../types';
+import { Teacher, SubjectRule, DEFAULT_SUBJECT_RULES } from '../types';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -9,31 +9,38 @@ interface SettingsModalProps {
   setTeachers: React.Dispatch<React.SetStateAction<Teacher[]>>;
   classes: string[];
   setClasses: React.Dispatch<React.SetStateAction<string[]>>;
+  subjectRules: SubjectRule[];
+  setSubjectRules: React.Dispatch<React.SetStateAction<SubjectRule[]>>;
+  schedule: any; // Using any for brevity here, or could import ScheduleData
+  setSchedule: any;
   onClearAll: () => void;
 }
 
 export function SettingsModal({
-  isOpen, onClose, teachers, setTeachers, classes, setClasses, onClearAll
+  isOpen, onClose, teachers, setTeachers, classes, setClasses, subjectRules, setSubjectRules, onClearAll
 }: SettingsModalProps) {
-  const [activeTab, setActiveTab] = useState<'teachers' | 'classes'>('teachers');
+  const [activeTab, setActiveTab] = useState<'teachers' | 'classes' | 'subjects'>('teachers');
   
   // Local state for editing
   const [localTeachers, setLocalTeachers] = useState<Teacher[]>([...teachers]);
   const [localClasses, setLocalClasses] = useState<string[]>([...classes]);
+  const [localSubjectRules, setLocalSubjectRules] = useState<SubjectRule[]>([...subjectRules]);
 
   React.useEffect(() => {
     if (isOpen) {
       setLocalTeachers([...teachers]);
       setLocalClasses([...classes]);
+      setLocalSubjectRules([...subjectRules]);
       setActiveTab('teachers');
     }
-  }, [isOpen, teachers, classes]);
+  }, [isOpen, teachers, classes, subjectRules]);
 
   if (!isOpen) return null;
 
   const handleSave = () => {
     setTeachers(localTeachers.filter(t => t.name.trim() !== ''));
     setClasses(localClasses.filter(c => c.trim() !== ''));
+    setSubjectRules(localSubjectRules.filter(r => r.name.trim() !== ''));
     onClose();
   };
 
@@ -52,7 +59,7 @@ export function SettingsModal({
     setLocalTeachers(localTeachers.filter(t => t.id !== id));
   };
 
-  const updateTeacher = (id: string, field: 'name' | 'maxHours', value: string | number) => {
+  const updateTeacher = (id: string, field: 'name' | 'maxHours' | 'subject', value: string | number) => {
     setLocalTeachers(localTeachers.map(t => t.id === id ? { ...t, [field]: value } : t));
   };
 
@@ -76,6 +83,36 @@ export function SettingsModal({
     const newClasses = [...localClasses];
     newClasses[idx] = value;
     setLocalClasses(newClasses);
+  };
+
+  const addSubjectRule = () => {
+    if (localSubjectRules.length > 0) {
+      if (!localSubjectRules[localSubjectRules.length - 1].name.trim()) return;
+    }
+    const id = `sr${Date.now()}`;
+    setLocalSubjectRules([...localSubjectRules, { id, name: '', maxHours: [0,0,0,0,0,0] }]);
+    setTimeout(() => {
+      document.getElementById(`subject-name-${id}`)?.focus();
+    }, 10);
+  };
+
+  const removeSubjectRule = (id: string) => {
+    setLocalSubjectRules(localSubjectRules.filter(r => r.id !== id));
+  };
+
+  const updateSubjectRuleName = (id: string, name: string) => {
+    setLocalSubjectRules(localSubjectRules.map(r => r.id === id ? { ...r, name } : r));
+  };
+
+  const updateSubjectRuleHours = (id: string, gradeIdx: number, val: number) => {
+    setLocalSubjectRules(localSubjectRules.map(r => {
+      if (r.id === id) {
+        const newHours = [...r.maxHours];
+        newHours[gradeIdx] = val;
+        return { ...r, maxHours: newHours };
+      }
+      return r;
+    }));
   };
 
   // Validation
@@ -112,6 +149,12 @@ export function SettingsModal({
           >
             Τμήματα
           </button>
+          <button
+            onClick={() => setActiveTab('subjects')}
+            className={`px-6 py-3 text-sm font-medium transition-colors ${activeTab === 'subjects' ? 'bg-white border-t-2 border-t-blue-600 text-blue-700 shadow-sm' : 'text-slate-600 hover:bg-slate-100'}`}
+          >
+            Κανόνες Μαθημάτων
+          </button>
         </div>
 
         <div className="flex-1 overflow-auto p-6 bg-slate-50">
@@ -123,7 +166,7 @@ export function SettingsModal({
                   <Plus className="w-4 h-4" /> Προσθήκη
                 </button>
               </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="flex flex-col gap-3">
                 {localTeachers.map((t, idx) => {
                   const isDuplicate = duplicateTeacherNames.includes(t.name.trim()) && t.name.trim() !== '';
                   return (
@@ -143,6 +186,16 @@ export function SettingsModal({
                       className={`flex-1 px-3 py-1.5 border rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none ${isDuplicate ? 'border-red-400 text-red-900 bg-white' : 'border-slate-300'}`}
                       placeholder="Όνομα Εκπαιδευτικού"
                     />
+                    <select
+                      value={t.subject || ''}
+                      onChange={(e) => updateTeacher(t.id, 'subject', e.target.value)}
+                      className="w-32 px-2 py-1.5 border border-slate-300 rounded-md text-sm text-slate-700 bg-white focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                    >
+                      <option value="">Γεν. Παιδείας</option>
+                      {localSubjectRules.map(r => (
+                        <option key={r.id} value={r.name}>{r.name}</option>
+                      ))}
+                    </select>
                     <div className="flex items-center gap-2 w-24">
                       <input 
                         type="number" 
@@ -198,6 +251,60 @@ export function SettingsModal({
                   </div>
                   );
                 })}
+              </div>
+            </div>
+          )}
+          {activeTab === 'subjects' && (
+            <div className="space-y-4">
+              <div className="flex justify-between items-center mb-4">
+                <p className="text-sm text-slate-600">Διαχειριστείτε τους κανόνες μαθημάτων (μέγιστες ώρες ανά τάξη: Α, Β, Γ, Δ, Ε, ΣΤ).</p>
+                <button onClick={addSubjectRule} className="flex items-center gap-2 bg-blue-50 text-blue-700 px-3 py-1.5 rounded-lg text-sm font-medium hover:bg-blue-100 transition-colors border border-blue-200">
+                  <Plus className="w-4 h-4" /> Προσθήκη
+                </button>
+              </div>
+              <div className="flex flex-col gap-3">
+                <div className="flex gap-2 px-2 pb-2 border-b text-xs font-semibold text-slate-500">
+                  <div className="flex-1 pl-8">Μάθημα / Ειδικότητα</div>
+                  <div className="w-10 text-center">Α</div>
+                  <div className="w-10 text-center">Β</div>
+                  <div className="w-10 text-center">Γ</div>
+                  <div className="w-10 text-center">Δ</div>
+                  <div className="w-10 text-center">Ε</div>
+                  <div className="w-10 text-center">ΣΤ</div>
+                  <div className="w-8"></div>
+                </div>
+                {localSubjectRules.map((r, idx) => (
+                  <div key={r.id} className="flex items-center gap-2 bg-white p-2 rounded-lg border border-slate-200 shadow-sm">
+                    <span className="w-6 shrink-0 text-right text-slate-400 font-mono text-sm">{idx + 1}.</span>
+                    <input 
+                      id={`subject-name-${r.id}`}
+                      type="text" 
+                      value={r.name}
+                      onChange={(e) => updateSubjectRuleName(r.id, e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          addSubjectRule();
+                        }
+                      }}
+                      className="flex-1 w-full px-2 py-1.5 border border-slate-300 rounded-md text-sm font-medium focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                      placeholder="Όνομα Μαθήματος"
+                    />
+                    {r.maxHours.map((hours, gIdx) => (
+                      <input 
+                        key={gIdx}
+                        type="number"
+                        min="0"
+                        value={hours}
+                        onChange={(e) => updateSubjectRuleHours(r.id, gIdx, parseInt(e.target.value) || 0)}
+                        className="w-10 px-1 py-1.5 border border-slate-300 rounded-md text-sm text-center focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                      />
+                    ))}
+                    <button onClick={() => removeSubjectRule(r.id)} className="p-1.5 shrink-0 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors" title="Διαγραφή">
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                ))}
               </div>
             </div>
           )}

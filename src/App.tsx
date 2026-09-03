@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { AlertCircle, CheckCircle2, Download, Upload, List, X, Users, BookOpen, Printer, Settings, Search } from 'lucide-react';
 import { useValidation } from './hooks/useValidation';
-import { ScheduleData, Teacher } from './types';
+import { ScheduleData, Teacher, SubjectRule, DEFAULT_SUBJECT_RULES } from './types';
 import { exportToCSV, importFromCSV } from './utils/csv';
 import { SettingsModal } from './components/SettingsModal';
 
@@ -46,6 +46,16 @@ export default function App() {
     return [];
   });
 
+  const [subjectRules, setSubjectRules] = useState<SubjectRule[]>(() => {
+    try {
+      const saved = localStorage.getItem('school_subject_rules');
+      if (saved) return JSON.parse(saved);
+    } catch (e) {
+      console.error('Failed to load subject rules', e);
+    }
+    return DEFAULT_SUBJECT_RULES;
+  });
+
   const [schedule, setSchedule] = useState<ScheduleData>(() => {
     try {
       const saved = localStorage.getItem('school_schedule_auto_save');
@@ -72,6 +82,10 @@ export default function App() {
   }, [classes]);
 
   useEffect(() => {
+    localStorage.setItem('school_subject_rules', JSON.stringify(subjectRules));
+  }, [subjectRules]);
+
+  useEffect(() => {
     const timer = setTimeout(() => {
       try {
         localStorage.setItem('school_schedule_auto_save', JSON.stringify(schedule));
@@ -89,8 +103,14 @@ export default function App() {
   };
 
   const getTeacherColor = (tId: string) => {
-    const idx = teachers.findIndex(t => t.id === tId);
-    if (idx === -1) return 'bg-slate-100 text-slate-800 border-slate-200';
+    const teacher = teachers.find(t => t.id === tId);
+    const nameToHash = teacher ? teacher.name.trim() : tId.trim();
+    
+    let hash = 0;
+    for (let i = 0; i < nameToHash.length; i++) {
+      hash = nameToHash.charCodeAt(i) + ((hash << 5) - hash);
+    }
+    const idx = Math.abs(hash);
     return CLASS_COLORS[idx % CLASS_COLORS.length];
   };
 
@@ -103,7 +123,7 @@ export default function App() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const editContainerRef = useRef<HTMLDivElement>(null);
 
-  const errors = useValidation(schedule, teachers);
+  const errors = useValidation(schedule, teachers, classes, subjectRules);
 
   const numCols = 40; // 5 days * 8 hours
   const numRows = viewMode === 'teacher' ? teachers.length : classes.length;
@@ -140,7 +160,7 @@ export default function App() {
          delete newState[teacherId][day][hour];
       } else {
          const teacher = teachers.find(t => t.id === teacherId);
-         const isSpecial = teacher && teacher.maxHours === 0;
+         const isSpecial = (teacher && teacher.maxHours === 0) || teacherId === "ΑΓΓΛΙΚΑ" || teacherId === "Β' ΞΕΝΗ ΓΛΩΣΣΑ";
          
          const getPrefix = (c: string) => c.match(/^[^\d]+/)?.[0] || c;
          const classesToAssign = isSpecial 
@@ -170,7 +190,7 @@ export default function App() {
       // Assign to new teacher
       if (newTeacherId) {
          const teacher = teachers.find(t => t.id === newTeacherId);
-         const isSpecial = teacher && teacher.maxHours === 0;
+         const isSpecial = (teacher && teacher.maxHours === 0) || newTeacherId === "ΑΓΓΛΙΚΑ" || newTeacherId === "Β' ΞΕΝΗ ΓΛΩΣΣΑ";
          
          const getPrefix = (c: string) => c.match(/^[^\d]+/)?.[0] || c;
          const classesToAssign = isSpecial 
@@ -205,16 +225,25 @@ export default function App() {
     classesByGrade[p].push(c);
   });
 
-  const sortedOptions = viewMode === 'teacher' 
-    ? ["", ...[...classes].sort((a, b) => a.localeCompare(b, 'el'))] 
-    : ["", ...[...teachers].sort((a, b) => a.name.localeCompare(b.name, 'el')).map(t => t.id)];
-
   const getOptionLabel = (val: string) => {
     if (!val) return "Κενό";
     if (viewMode === 'teacher') return val; // it's a classId
     const t = teachers.find(x => x.id === val);
     return t ? t.name : val;
   };
+
+  const ALLOWED_SPECIAL_SUBJECTS = ["ΑΓΓΛΙΚΑ", "Β' ΞΕΝΗ ΓΛΩΣΣΑ", "ΠΛΗΡΟΦΟΡΙΚΗ"];
+  const sortedOptions = viewMode === 'teacher' 
+    ? ["", ...[...classes].sort((a, b) => a.localeCompare(b, 'el'))] 
+    : [
+        "", 
+        ...[
+          ...teachers.map(t => t.id),
+          ...subjectRules
+            .filter(sr => ALLOWED_SPECIAL_SUBJECTS.includes(sr.name) && !teachers.some(t => t.name === sr.name || t.subject === sr.name))
+            .map(sr => sr.name)
+        ].sort((a, b) => getOptionLabel(a).localeCompare(getOptionLabel(b), 'el'))
+      ];
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (!focusedCell) return;
@@ -439,9 +468,12 @@ export default function App() {
       try {
         const data = await importFromCSV(e.target.files[0], teachers);
         if (data.teachers && data.classes) {
-          if (window.confirm('Το αρχείο περιέχει Ρυθμίσεις Σχολείου (Εκπαιδευτικούς & Τμήματα). Θέλετε να αντικατασταθούν τα τρέχοντα δεδομένα;')) {
+          if (window.confirm('Το αρχείο περιέχει Ρυθμίσεις Σχολείου. Θέλετε να αντικατασταθούν τα τρέχοντα δεδομένα (Εκπαιδευτικοί, Τμήματα, Κανόνες);')) {
             setTeachers(data.teachers);
             setClasses(data.classes);
+            if (data.subjectRules) {
+              setSubjectRules(data.subjectRules);
+            }
           }
         }
         setSchedule(data.schedule);
@@ -573,7 +605,7 @@ export default function App() {
             <Upload className="w-4 h-4" /> <span className="hidden xl:inline">Εισαγωγή</span>
           </button>
           <button 
-            onClick={() => exportToCSV(schedule, teachers, classes)}
+            onClick={() => exportToCSV(schedule, teachers, classes, subjectRules)}
             className="flex items-center gap-2 p-2 xl:px-4 xl:py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md font-medium text-sm transition-colors shadow-sm shrink-0"
             title="Εξαγωγή"
           >
@@ -586,8 +618,8 @@ export default function App() {
         <div className={`p-6 w-full flex-1 flex flex-col min-w-0 ${viewMode === 'class-grid' ? 'overflow-auto' : 'overflow-hidden'}`}>
           {viewMode === 'class-grid' ? (
             <div className="flex gap-8 items-start w-max pb-12">
-            {Object.entries(classesByGrade).map(([grade, classes]) => {
-              const filteredClasses = classes.filter(cls => cls.toLowerCase().includes(searchQuery.toLowerCase()));
+            {Object.entries(classesByGrade).map(([grade, gradeClasses]) => {
+              const filteredClasses = gradeClasses.filter(cls => cls.toLowerCase().includes(searchQuery.toLowerCase()));
               if (filteredClasses.length === 0) return null;
               
               return (
@@ -623,7 +655,7 @@ export default function App() {
                                 const cIdx = hIdx * 5 + dIdx;
                                 const val = cSchedule[dIdx]?.[hIdx] || "";
                                 const teacherObj = teachers.find(t => t.id === val);
-                                const teacherName = teacherObj ? teacherObj.name : "";
+                                const teacherName = teacherObj ? teacherObj.name : val;
                                 const teacherColorClass = val ? getTeacherColor(val) : "";
                                 const isFocused = focusedCell?.rowIdx === rowIdx && focusedCell?.cIdx === cIdx;
                                 
@@ -843,7 +875,7 @@ export default function App() {
                               const cIdx = dIdx * 8 + hIdx;
                               const val = cSchedule[dIdx]?.[hIdx] || "";
                               const teacherObj = teachers.find(t => t.id === val);
-                              const teacherName = teacherObj ? teacherObj.name : "";
+                              const teacherName = teacherObj ? teacherObj.name : val;
                               const teacherColorClass = val ? getTeacherColor(val) : "";
                               const isFocused = focusedCell?.rowIdx === rowIdx && focusedCell?.cIdx === cIdx;
                               const isLastHour = hIdx === 7;
@@ -1008,6 +1040,8 @@ export default function App() {
         setTeachers={setTeachers}
         classes={classes}
         setClasses={setClasses}
+        subjectRules={subjectRules}
+        setSubjectRules={setSubjectRules}
         schedule={schedule}
         setSchedule={setSchedule}
         onClearAll={handleClearAll}

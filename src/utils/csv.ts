@@ -1,6 +1,6 @@
-import { ScheduleData, Teacher } from '../types';
+import { ScheduleData, Teacher, SubjectRule } from '../types';
 
-export function exportToCSV(schedule: ScheduleData, teachers: Teacher[], classes: string[]) {
+export function exportToCSV(schedule: ScheduleData, teachers: Teacher[], classes: string[], subjectRules: SubjectRule[]) {
     const header = ['Εκπαιδευτικός', 'Max Ώρες'];
     const DAYS = ['Δευτέρα', 'Τρίτη', 'Τετάρτη', 'Πέμπτη', 'Παρασκευή'];
     for (let d = 0; d < 5; d++) {
@@ -8,8 +8,8 @@ export function exportToCSV(schedule: ScheduleData, teachers: Teacher[], classes
             header.push(`${DAYS[d]} ${h + 1}η`);
         }
     }
-
     const rows = [header.join(',')];
+
     teachers.forEach(t => {
         const row = [`"${t.name}"`, t.maxHours.toString()];
         for (let d = 0; d < 5; d++) {
@@ -25,10 +25,13 @@ export function exportToCSV(schedule: ScheduleData, teachers: Teacher[], classes
     rows.push('');
     rows.push('---SYSTEM_DATA---');
     teachers.forEach(t => {
-        rows.push(`TEACHER,"${t.id}","${t.name}",${t.maxHours}`);
+        rows.push(`TEACHER,"${t.id}","${t.name}",${t.maxHours},"${t.subject || ''}"`);
     });
     classes.forEach(c => {
         rows.push(`CLASS,"${c}"`);
+    });
+    subjectRules.forEach(r => {
+        rows.push(`SUBJECT_RULE,"${r.id}","${r.name}",${r.maxHours.join(',')}`);
     });
 
     // Add BOM for Excel/Calc greek characters support
@@ -59,7 +62,7 @@ export function parseCSVRow(str: string): string[] {
     return result.map(s => s.replace(/^"|"$/g, '').trim());
 }
 
-export function importFromCSV(file: File, currentTeachers: Teacher[]): Promise<{ schedule: ScheduleData, teachers?: Teacher[], classes?: string[] }> {
+export function importFromCSV(file: File, currentTeachers: Teacher[]): Promise<{ schedule: ScheduleData, teachers?: Teacher[], classes?: string[], subjectRules?: SubjectRule[] }> {
     return new Promise((resolve, reject) => {
         const reader = new FileReader();
         reader.onload = (e) => {
@@ -69,6 +72,7 @@ export function importFromCSV(file: File, currentTeachers: Teacher[]): Promise<{
                 
                 let loadedTeachers: Teacher[] = [];
                 let loadedClasses: string[] = [];
+                let loadedSubjectRules: SubjectRule[] = [];
                 let hasSystemData = false;
 
                 // Pass 1: Find system data
@@ -78,9 +82,20 @@ export function importFromCSV(file: File, currentTeachers: Teacher[]): Promise<{
                     for (let i = systemDataIdx + 1; i < lines.length; i++) {
                         const cols = parseCSVRow(lines[i]);
                         if (cols[0] === 'TEACHER' && cols.length >= 4) {
-                            loadedTeachers.push({ id: cols[1], name: cols[2], maxHours: parseInt(cols[3], 10) || 0 });
+                            loadedTeachers.push({ 
+                                id: cols[1], 
+                                name: cols[2], 
+                                maxHours: parseInt(cols[3], 10) || 0,
+                                subject: cols[4] || undefined
+                            });
                         } else if (cols[0] === 'CLASS' && cols.length >= 2) {
                             loadedClasses.push(cols[1]);
+                        } else if (cols[0] === 'SUBJECT_RULE' && cols.length >= 9) {
+                            loadedSubjectRules.push({
+                                id: cols[1],
+                                name: cols[2],
+                                maxHours: cols.slice(3, 9).map(n => parseInt(n, 10) || 0)
+                            });
                         }
                     }
                 }
@@ -114,7 +129,8 @@ export function importFromCSV(file: File, currentTeachers: Teacher[]): Promise<{
                 resolve({
                     schedule: newSchedule,
                     teachers: hasSystemData ? loadedTeachers : undefined,
-                    classes: hasSystemData ? loadedClasses : undefined
+                    classes: hasSystemData ? loadedClasses : undefined,
+                    subjectRules: hasSystemData && loadedSubjectRules.length > 0 ? loadedSubjectRules : undefined
                 });
             } catch (err) {
                 reject(err);
