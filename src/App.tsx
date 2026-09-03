@@ -1,26 +1,10 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { AlertCircle, CheckCircle2, Download, Upload, List, X, Users, BookOpen } from 'lucide-react';
-import { ekpaideytikoi } from './data/ekpaideytikoi';
-import { tmimata } from './data/tmimata';
+import { AlertCircle, CheckCircle2, Download, Upload, List, X, Users, BookOpen, Printer, Settings, Search } from 'lucide-react';
 import { useValidation } from './hooks/useValidation';
 import { ScheduleData, Teacher } from './types';
 import { exportToCSV, importFromCSV } from './utils/csv';
+import { SettingsModal } from './components/SettingsModal';
 
-// Parse data from files
-const parsedTeachers: Teacher[] = ekpaideytikoi
-  .split('\n')
-  .map(line => line.trim())
-  .filter(Boolean)
-  .map((item, idx) => {
-    const [name, hours] = item.split(',');
-    return {
-      id: `t${idx}`,
-      name: name ? name.trim() : 'Άγνωστος',
-      maxHours: hours ? parseInt(hours.trim(), 10) : 0
-    };
-  });
-
-const parsedClasses = tmimata.split(',').map(c => c.trim()).filter(Boolean);
 const DAYS = ['Δευτέρα', 'Τρίτη', 'Τετάρτη', 'Πέμπτη', 'Παρασκευή'];
 
 const CLASS_COLORS = [
@@ -41,23 +25,75 @@ const CLASS_COLORS = [
   'bg-teal-100 text-teal-800 border-teal-200 hover:bg-teal-200/60'
 ];
 
-const getClassColor = (cId: string) => {
-  const idx = parsedClasses.indexOf(cId);
-  if (idx === -1) return 'bg-blue-50/40 text-blue-700'; // fallback
-  return CLASS_COLORS[idx % CLASS_COLORS.length];
-};
-
-const getTeacherColor = (tId: string) => {
-  const idx = parsedTeachers.findIndex(t => t.id === tId);
-  if (idx === -1) return 'bg-slate-100 text-slate-800 border-slate-200';
-  return CLASS_COLORS[idx % CLASS_COLORS.length];
-};
-
 export default function App() {
-  const [schedule, setSchedule] = useState<ScheduleData>({});
+  const [teachers, setTeachers] = useState<Teacher[]>(() => {
+    try {
+      const saved = localStorage.getItem('school_teachers');
+      if (saved) return JSON.parse(saved);
+    } catch (e) {
+      console.error('Failed to load teachers', e);
+    }
+    return [];
+  });
+
+  const [classes, setClasses] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem('school_classes');
+      if (saved) return JSON.parse(saved);
+    } catch (e) {
+      console.error('Failed to load classes', e);
+    }
+    return [];
+  });
+
+  const [schedule, setSchedule] = useState<ScheduleData>(() => {
+    try {
+      const saved = localStorage.getItem('school_schedule_auto_save');
+      if (saved) return JSON.parse(saved);
+    } catch (e) {
+      console.error('Failed to load auto-save', e);
+    }
+    return {};
+  });
+  
+  const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [showErrorsModal, setShowErrorsModal] = useState(false);
   const [viewMode, setViewMode] = useState<'teacher' | 'class-horizontal' | 'class-grid'>('teacher');
+  const [showInfoModal, setShowInfoModal] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
   
+  // Auto-save to localStorage
+  useEffect(() => {
+    localStorage.setItem('school_teachers', JSON.stringify(teachers));
+  }, [teachers]);
+
+  useEffect(() => {
+    localStorage.setItem('school_classes', JSON.stringify(classes));
+  }, [classes]);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      try {
+        localStorage.setItem('school_schedule_auto_save', JSON.stringify(schedule));
+      } catch (e) {
+        console.error('Failed to auto-save', e);
+      }
+    }, 1500);
+    return () => clearTimeout(timer);
+  }, [schedule]);
+
+  const getClassColor = (cId: string) => {
+    const idx = classes.indexOf(cId);
+    if (idx === -1) return 'bg-blue-50/40 text-blue-700'; // fallback
+    return CLASS_COLORS[idx % CLASS_COLORS.length];
+  };
+
+  const getTeacherColor = (tId: string) => {
+    const idx = teachers.findIndex(t => t.id === tId);
+    if (idx === -1) return 'bg-slate-100 text-slate-800 border-slate-200';
+    return CLASS_COLORS[idx % CLASS_COLORS.length];
+  };
+
   // Keyboard nav state
   const [focusedCell, setFocusedCell] = useState<{rowIdx: number, cIdx: number} | null>(null);
   const [isEditing, setIsEditing] = useState(false);
@@ -67,10 +103,10 @@ export default function App() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const editContainerRef = useRef<HTMLDivElement>(null);
 
-  const errors = useValidation(schedule, parsedTeachers);
+  const errors = useValidation(schedule, teachers);
 
   const numCols = 40; // 5 days * 8 hours
-  const numRows = viewMode === 'teacher' ? parsedTeachers.length : parsedClasses.length;
+  const numRows = viewMode === 'teacher' ? teachers.length : classes.length;
 
   useEffect(() => {
     if (focusedCell && !isEditing) {
@@ -81,7 +117,7 @@ export default function App() {
 
   // Derived state for Class View
   const classSchedule: Record<string, Record<number, Record<number, string>>> = {};
-  parsedClasses.forEach(c => classSchedule[c] = {});
+  classes.forEach(c => classSchedule[c] = {});
   Object.entries(schedule).forEach(([tId, days]) => {
     Object.entries(days).forEach(([d, hours]) => {
       Object.entries(hours).forEach(([h, classes]) => {
@@ -103,12 +139,12 @@ export default function App() {
       if (classId === "") {
          delete newState[teacherId][day][hour];
       } else {
-         const teacher = parsedTeachers.find(t => t.id === teacherId);
+         const teacher = teachers.find(t => t.id === teacherId);
          const isSpecial = teacher && teacher.maxHours === 0;
          
          const getPrefix = (c: string) => c.match(/^[^\d]+/)?.[0] || c;
          const classesToAssign = isSpecial 
-            ? parsedClasses.filter(c => getPrefix(c) === getPrefix(classId))
+            ? classes.filter(c => getPrefix(c) === getPrefix(classId))
             : [classId];
 
          newState[teacherId][day][hour] = classesToAssign;
@@ -133,12 +169,12 @@ export default function App() {
 
       // Assign to new teacher
       if (newTeacherId) {
-         const teacher = parsedTeachers.find(t => t.id === newTeacherId);
+         const teacher = teachers.find(t => t.id === newTeacherId);
          const isSpecial = teacher && teacher.maxHours === 0;
          
          const getPrefix = (c: string) => c.match(/^[^\d]+/)?.[0] || c;
          const classesToAssign = isSpecial 
-            ? parsedClasses.filter(c => getPrefix(c) === getPrefix(classId))
+            ? classes.filter(c => getPrefix(c) === getPrefix(classId))
             : [classId];
 
          if (!newState[newTeacherId]) newState[newTeacherId] = {};
@@ -163,20 +199,20 @@ export default function App() {
 
   const getPrefix = (c: string) => c.match(/^[^\d]+/)?.[0] || c;
   const classesByGrade: Record<string, string[]> = {};
-  parsedClasses.forEach(c => {
+  classes.forEach(c => {
     const p = getPrefix(c);
     if (!classesByGrade[p]) classesByGrade[p] = [];
     classesByGrade[p].push(c);
   });
 
   const sortedOptions = viewMode === 'teacher' 
-    ? ["", ...[...parsedClasses].sort((a, b) => a.localeCompare(b, 'el'))] 
-    : ["", ...[...parsedTeachers].sort((a, b) => a.name.localeCompare(b.name, 'el')).map(t => t.id)];
+    ? ["", ...[...classes].sort((a, b) => a.localeCompare(b, 'el'))] 
+    : ["", ...[...teachers].sort((a, b) => a.name.localeCompare(b.name, 'el')).map(t => t.id)];
 
   const getOptionLabel = (val: string) => {
     if (!val) return "Κενό";
     if (viewMode === 'teacher') return val; // it's a classId
-    const t = parsedTeachers.find(x => x.id === val);
+    const t = teachers.find(x => x.id === val);
     return t ? t.name : val;
   };
 
@@ -196,19 +232,19 @@ export default function App() {
       
       let currentVal = "";
       if (viewMode === 'teacher') {
-        const cellClasses = schedule[parsedTeachers[focusedCell.rowIdx].id]?.[dIdx]?.[hIdx] || [];
+        const cellClasses = schedule[teachers[focusedCell.rowIdx].id]?.[dIdx]?.[hIdx] || [];
         currentVal = cellClasses[0] || "";
       } else {
-        currentVal = classSchedule[parsedClasses[focusedCell.rowIdx]]?.[dIdx]?.[hIdx] || "";
+        currentVal = classSchedule[classes[focusedCell.rowIdx]]?.[dIdx]?.[hIdx] || "";
       }
 
       if (e.code === 'KeyC' && currentVal) {
         setInternalClipboard({ type: viewMode === 'teacher' ? 'class' : 'teacher', val: currentVal });
       } else if (e.code === 'KeyV' && internalClipboard) {
         if (viewMode === 'teacher' && internalClipboard.type === 'class') {
-           updateCell(parsedTeachers[focusedCell.rowIdx].id, dIdx, hIdx, internalClipboard.val);
+           updateCell(teachers[focusedCell.rowIdx].id, dIdx, hIdx, internalClipboard.val);
         } else if (viewMode !== 'teacher' && internalClipboard.type === 'teacher') {
-           updateClassCell(parsedClasses[focusedCell.rowIdx], dIdx, hIdx, internalClipboard.val);
+           updateClassCell(classes[focusedCell.rowIdx], dIdx, hIdx, internalClipboard.val);
         }
       }
       return;
@@ -225,9 +261,9 @@ export default function App() {
         hIdx = focusedCell.cIdx % 8;
       }
       if (viewMode === 'teacher') {
-        updateCell(parsedTeachers[focusedCell.rowIdx].id, dIdx, hIdx, "");
+        updateCell(teachers[focusedCell.rowIdx].id, dIdx, hIdx, "");
       } else {
-        updateClassCell(parsedClasses[focusedCell.rowIdx], dIdx, hIdx, "");
+        updateClassCell(classes[focusedCell.rowIdx], dIdx, hIdx, "");
       }
       setIsEditing(false);
       return;
@@ -254,9 +290,9 @@ export default function App() {
         const selectedVal = sortedOptions[editIndex];
         
         if (viewMode === 'teacher') {
-          updateCell(parsedTeachers[focusedCell.rowIdx].id, dIdx, hIdx, selectedVal);
+          updateCell(teachers[focusedCell.rowIdx].id, dIdx, hIdx, selectedVal);
         } else {
-          updateClassCell(parsedClasses[focusedCell.rowIdx], dIdx, hIdx, selectedVal);
+          updateClassCell(classes[focusedCell.rowIdx], dIdx, hIdx, selectedVal);
         }
         setIsEditing(false);
       } else if (e.key === 'Escape') {
@@ -294,7 +330,7 @@ export default function App() {
         let gradeIdx = 0;
         let classInGradeIdx = 0;
         for (let i = 0; i < gradeKeys.length; i++) {
-            const idx = classesByGrade[gradeKeys[i]].indexOf(parsedClasses[focusedCell.rowIdx]);
+            const idx = classesByGrade[gradeKeys[i]].indexOf(classes[focusedCell.rowIdx]);
             if (idx !== -1) {
                 gradeIdx = i;
                 classInGradeIdx = idx;
@@ -330,7 +366,7 @@ export default function App() {
         const newClassInGradeIdx = Math.floor(y / 8);
         const newHIdx = y % 8;
         
-        nextRow = parsedClasses.indexOf(targetGradeClasses[newClassInGradeIdx]);
+        nextRow = classes.indexOf(targetGradeClasses[newClassInGradeIdx]);
         nextCol = newHIdx * 5 + newDIdx;
       }
     } else {
@@ -351,7 +387,7 @@ export default function App() {
 
     if (['ArrowRight', 'ArrowLeft', 'ArrowDown', 'ArrowUp'].includes(e.key)) {
       setFocusedCell({ rowIdx: nextRow, cIdx: nextCol });
-    } else if (e.key === 'Enter') {
+    } else if (e.key === 'Enter' || (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey)) {
       e.preventDefault();
       setIsEditing(true);
       let dIdx, hIdx;
@@ -365,13 +401,30 @@ export default function App() {
       
       let currentVal = "";
       if (viewMode === 'teacher') {
-        const cellClasses = schedule[parsedTeachers[focusedCell.rowIdx].id]?.[dIdx]?.[hIdx] || [];
+        const cellClasses = schedule[teachers[focusedCell.rowIdx].id]?.[dIdx]?.[hIdx] || [];
         currentVal = cellClasses[0] || "";
       } else {
-        currentVal = classSchedule[parsedClasses[focusedCell.rowIdx]]?.[dIdx]?.[hIdx] || "";
+        currentVal = classSchedule[classes[focusedCell.rowIdx]]?.[dIdx]?.[hIdx] || "";
       }
       
-      setEditIndex(Math.max(0, sortedOptions.indexOf(currentVal)));
+      if (e.key === 'Enter') {
+        setEditIndex(Math.max(0, sortedOptions.indexOf(currentVal)));
+      } else {
+        const char = e.key.toLowerCase();
+        const matchIdx = sortedOptions.findIndex(opt => {
+          const label = getOptionLabel(opt).toLowerCase();
+          return label.startsWith(char);
+        });
+        if (matchIdx !== -1) {
+          setEditIndex(matchIdx);
+          // Auto-scroll when the component renders is handled by useEffect or can just let the focus handle it
+          setTimeout(() => {
+            document.getElementById(`edit-opt-${matchIdx}`)?.scrollIntoView({ block: 'nearest' });
+          }, 0);
+        } else {
+          setEditIndex(Math.max(0, sortedOptions.indexOf(currentVal)));
+        }
+      }
     }
   };
 
@@ -381,13 +434,35 @@ export default function App() {
     setEditIndex(Math.max(0, sortedOptions.indexOf(currentVal)));
   };
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
-      importFromCSV(e.target.files[0], parsedTeachers, (newSchedule) => {
-        setSchedule(newSchedule);
-      });
+      try {
+        const data = await importFromCSV(e.target.files[0], teachers);
+        if (data.teachers && data.classes) {
+          if (window.confirm('Το αρχείο περιέχει Ρυθμίσεις Σχολείου (Εκπαιδευτικούς & Τμήματα). Θέλετε να αντικατασταθούν τα τρέχοντα δεδομένα;')) {
+            setTeachers(data.teachers);
+            setClasses(data.classes);
+          }
+        }
+        setSchedule(data.schedule);
+      } catch (err) {
+        alert('Υπήρξε σφάλμα κατά την ανάγνωση του αρχείου.');
+        console.error(err);
+      }
     }
     if (fileInputRef.current) fileInputRef.current.value = "";
+  };
+
+  const handleClearAll = () => {
+    if (window.confirm('ΠΡΟΣΟΧΗ: Είστε σίγουροι; Αυτή η ενέργεια θα διαγράψει ΟΛΑ τα δεδομένα (Εκπαιδευτικούς, Τμήματα, Πρόγραμμα). Η ενέργεια ΔΕΝ αναιρείται!')) {
+      setTeachers([]);
+      setClasses([]);
+      setSchedule({});
+      localStorage.removeItem('school_teachers');
+      localStorage.removeItem('school_classes');
+      localStorage.removeItem('school_schedule_auto_save');
+      setShowSettingsModal(false);
+    }
   };
 
   return (
@@ -401,39 +476,88 @@ export default function App() {
         }
       }}
     >
-      <header className="shrink-0 bg-white shadow-sm border-b border-slate-200 px-6 py-4 z-40 flex justify-between items-center relative">
-        <div className="flex items-center gap-6">
-          <div>
-            <h1 className="text-xl font-bold text-slate-900">Πρόγραμμα Σχολικής Μονάδας</h1>
-            <p className="text-sm text-slate-500 mt-1">Διαμόρφωση εβδομαδιαίου προγράμματος</p>
+      <header className="shrink-0 bg-white shadow-sm border-b border-slate-200 px-4 xl:px-6 py-3 xl:py-4 z-40 flex flex-wrap justify-between items-center relative gap-4">
+        <div className="flex flex-wrap items-center gap-3 xl:gap-6">
+          <div className="hidden lg:block">
+            <h1 className="text-lg xl:text-xl font-bold text-slate-900 leading-tight">Πρόγραμμα Σχολικής Μονάδας</h1>
+            <p className="text-xs xl:text-sm text-slate-500 mt-0.5">Διαμόρφωση εβδομαδιαίου προγράμματος</p>
           </div>
           
-          <div className="flex bg-slate-100 p-1 rounded-lg border border-slate-200">
+          <div className="flex flex-wrap items-center gap-2 xl:gap-3 lg:ml-2">
             <button
-              onClick={() => { setViewMode('teacher'); setFocusedCell(null); setIsEditing(false); }}
-              className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${viewMode === 'teacher' ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/50'}`}
+              onClick={() => setShowSettingsModal(true)}
+              className="flex items-center gap-2 p-2 xl:px-4 xl:py-2 bg-slate-800 hover:bg-slate-900 text-white rounded-md font-medium text-sm transition-colors shadow-sm"
+              title="Ρυθμίσεις Σχολείου"
             >
-              <Users className="w-4 h-4" />
-              Ανά Εκπαιδευτικό
+              <Settings className="w-4 h-4" /> <span className="hidden xl:inline">Ρυθμίσεις Σχολείου</span>
             </button>
-            <button
-              onClick={() => { setViewMode('class-horizontal'); setFocusedCell(null); setIsEditing(false); }}
-              className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${viewMode === 'class-horizontal' ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/50'}`}
-            >
-              <List className="w-4 h-4" />
-              Τμήματα (Γραμμικά)
-            </button>
-            <button
-              onClick={() => { setViewMode('class-grid'); setFocusedCell(null); setIsEditing(false); }}
-              className={`flex items-center gap-2 px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${viewMode === 'class-grid' ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/50'}`}
-            >
-              <BookOpen className="w-4 h-4" />
-              Τμήματα (Πλέγμα)
-            </button>
+            <div className="hidden xl:block w-px h-6 bg-slate-200 mx-1"></div>
+            <div className="flex bg-slate-100 p-1 rounded-lg border border-slate-200">
+              <button
+                onClick={() => { setViewMode('teacher'); setFocusedCell(null); setIsEditing(false); setSearchQuery(''); }}
+                className={`flex items-center gap-2 px-2.5 xl:px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${viewMode === 'teacher' ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/50'}`}
+                title="Προβολή ανά Εκπαιδευτικό"
+              >
+                <Users className="w-4 h-4" />
+                <span className="hidden lg:inline">Ανά Εκπαιδευτικό</span>
+              </button>
+              <button
+                onClick={() => { setViewMode('class-horizontal'); setFocusedCell(null); setIsEditing(false); setSearchQuery(''); }}
+                className={`flex items-center gap-2 px-2.5 xl:px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${viewMode === 'class-horizontal' ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/50'}`}
+                title="Προβολή Τμημάτων (Γραμμικά)"
+              >
+                <List className="w-4 h-4" />
+                <span className="hidden lg:inline">Τμήματα (Γραμμικά)</span>
+              </button>
+              <button
+                onClick={() => { setViewMode('class-grid'); setFocusedCell(null); setIsEditing(false); setSearchQuery(''); }}
+                className={`flex items-center gap-2 px-2.5 xl:px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${viewMode === 'class-grid' ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/50'}`}
+                title="Προβολή Τμημάτων (Πλέγμα)"
+              >
+                <BookOpen className="w-4 h-4" />
+                <span className="hidden lg:inline">Τμήματα (Πλέγμα)</span>
+              </button>
+            </div>
           </div>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-2 xl:gap-3">
+          <div className="relative">
+            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input 
+              type="text" 
+              placeholder={viewMode === 'teacher' ? 'Αναζήτηση Εκπαιδευτικού...' : 'Αναζήτηση Τμήματος...'}
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+              className="pl-9 pr-8 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white w-40 sm:w-48 xl:w-64 transition-all placeholder:text-slate-400"
+            />
+            {searchQuery && (
+              <button 
+                onClick={() => setSearchQuery('')} 
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-1"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+          
+          <button
+            onClick={() => setShowInfoModal(true)}
+            className="flex items-center justify-center p-2 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-md transition-colors shrink-0"
+            title="Πληροφορίες Προγράμματος"
+          >
+            <BookOpen className="w-5 h-5" />
+          </button>
+          
+          <div className="hidden xl:block w-px h-6 bg-slate-200 mx-1"></div>
+
+          <button 
+            onClick={() => window.print()}
+            className="flex items-center gap-2 p-2 xl:px-4 xl:py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-md font-medium text-sm transition-colors shadow-sm shrink-0"
+            title="Εκτύπωση"
+          >
+            <Printer className="w-4 h-4" /> <span className="hidden 2xl:inline">Εκτύπωση</span>
+          </button>
           <input 
             type="file" 
             accept=".csv" 
@@ -443,27 +567,33 @@ export default function App() {
           />
           <button 
             onClick={() => fileInputRef.current?.click()}
-            className="flex items-center gap-2 px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-md font-medium text-sm transition-colors"
+            className="flex items-center gap-2 p-2 xl:px-4 xl:py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-md font-medium text-sm transition-colors shrink-0"
+            title="Εισαγωγή"
           >
-            <Upload className="w-4 h-4" /> Εισαγωγή CSV
+            <Upload className="w-4 h-4" /> <span className="hidden xl:inline">Εισαγωγή</span>
           </button>
           <button 
-            onClick={() => exportToCSV(schedule, parsedTeachers)}
-            className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md font-medium text-sm transition-colors shadow-sm"
+            onClick={() => exportToCSV(schedule, teachers, classes)}
+            className="flex items-center gap-2 p-2 xl:px-4 xl:py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md font-medium text-sm transition-colors shadow-sm shrink-0"
+            title="Εξαγωγή"
           >
-            <Download className="w-4 h-4" /> Εξαγωγή CSV
+            <Download className="w-4 h-4" /> <span className="hidden xl:inline">Εξαγωγή</span>
           </button>
         </div>
       </header>
 
-      <main className="flex-1 overflow-auto bg-slate-50 relative">
-        <div className="p-6 w-max min-w-full">
+      <main className="flex-1 bg-slate-50 relative flex flex-col overflow-hidden">
+        <div className={`p-6 w-full flex-1 flex flex-col min-w-0 ${viewMode === 'class-grid' ? 'overflow-auto' : 'overflow-hidden'}`}>
           {viewMode === 'class-grid' ? (
-            <div className="flex gap-8 items-start w-max">
-            {Object.entries(classesByGrade).map(([grade, classes]) => (
+            <div className="flex gap-8 items-start w-max pb-12">
+            {Object.entries(classesByGrade).map(([grade, classes]) => {
+              const filteredClasses = classes.filter(cls => cls.toLowerCase().includes(searchQuery.toLowerCase()));
+              if (filteredClasses.length === 0) return null;
+              
+              return (
               <div key={grade} className="flex flex-col gap-6 shrink-0">
-                {classes.map(cls => {
-                  const rowIdx = parsedClasses.indexOf(cls);
+                {filteredClasses.map(cls => {
+                  const rowIdx = classes.indexOf(cls);
                   const cSchedule = classSchedule[cls] || {};
                   const clsColor = getClassColor(cls);
 
@@ -492,7 +622,7 @@ export default function App() {
                               {[...Array(5)].map((_, dIdx) => {
                                 const cIdx = hIdx * 5 + dIdx;
                                 const val = cSchedule[dIdx]?.[hIdx] || "";
-                                const teacherObj = parsedTeachers.find(t => t.id === val);
+                                const teacherObj = teachers.find(t => t.id === val);
                                 const teacherName = teacherObj ? teacherObj.name : "";
                                 const teacherColorClass = val ? getTeacherColor(val) : "";
                                 const isFocused = focusedCell?.rowIdx === rowIdx && focusedCell?.cIdx === cIdx;
@@ -560,25 +690,26 @@ export default function App() {
                   );
                 })}
               </div>
-            ))}
+            );
+          })}
           </div>
         ) : (
-        <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden relative pb-12 w-max min-w-full">
-          <div className="">
+        <div className="bg-white rounded-xl shadow-sm border border-slate-200 relative flex-1 flex flex-col overflow-hidden w-full">
+          <div className="overflow-auto flex-1 pb-32">
             <table className="w-full border-collapse text-sm min-w-max">
               <thead>
                 <tr>
-                  <th className="sticky top-0 left-0 z-30 h-10 bg-slate-100 border-b border-b-slate-300 border-r-2 border-r-slate-400 p-2 w-64 min-w-[16rem] text-left shadow-[1px_1px_0_0_#cbd5e1]">
+                  <th className="sticky top-0 left-0 z-40 h-10 bg-slate-100 border-b border-b-slate-300 border-r-2 border-r-slate-400 p-2 w-64 min-w-[16rem] text-left shadow-[1px_1px_0_0_#cbd5e1]">
                     {viewMode === 'teacher' ? 'Εκπαιδευτικός' : 'Τμήμα'}
                   </th>
                   {DAYS.map((day, dIdx) => (
-                    <th key={dIdx} colSpan={8} className="sticky top-0 z-20 h-10 bg-slate-100 border-b border-b-slate-300 border-r-2 border-r-slate-400 p-2 text-center font-semibold text-slate-700">
+                    <th key={dIdx} colSpan={8} className="sticky top-0 z-30 h-10 bg-slate-100 border-b border-b-slate-300 border-r-2 border-r-slate-400 p-2 text-center font-semibold text-slate-700">
                       {day}
                     </th>
                   ))}
                 </tr>
                 <tr>
-                  <th className="sticky top-10 left-0 z-30 h-10 bg-slate-100 border-b border-b-slate-300 border-r-2 border-r-slate-400 p-2 text-left shadow-[1px_1px_0_0_#cbd5e1]">
+                  <th className="sticky top-10 left-0 z-40 h-10 bg-slate-100 border-b border-b-slate-300 border-r-2 border-r-slate-400 p-2 text-left shadow-[1px_1px_0_0_#cbd5e1]">
                     <span className="text-xs text-slate-500 font-normal">
                       {viewMode === 'teacher' ? 'Όνομα (Ωρ.)' : 'Όνομα Τμήματος'}
                     </span>
@@ -588,7 +719,7 @@ export default function App() {
                       {[...Array(8)].map((_, hIdx) => {
                         const isLastHour = hIdx === 7;
                         return (
-                          <th key={hIdx} className={`sticky top-10 z-20 h-10 bg-slate-50 border-b border-b-slate-300 p-1 min-w-[60px] text-xs text-slate-500 text-center ${isLastHour ? 'border-r-2 border-r-slate-400' : 'border-r border-r-slate-300'}`}>
+                          <th key={hIdx} className={`sticky top-10 z-30 h-10 bg-slate-50 border-b border-b-slate-300 p-1 min-w-[60px] text-xs text-slate-500 text-center ${isLastHour ? 'border-r-2 border-r-slate-400' : 'border-r border-r-slate-300'}`}>
                             {hIdx + 1}η
                           </th>
                         );
@@ -600,7 +731,8 @@ export default function App() {
               <tbody>
                 {viewMode === 'teacher' ? (
                   /* --- TEACHER VIEW --- */
-                  parsedTeachers.map((teacher, rowIdx) => {
+                  teachers.filter(t => t.name.toLowerCase().includes(searchQuery.toLowerCase())).map((teacher) => {
+                    const rowIdx = teachers.findIndex(t => t.id === teacher.id);
                     const tSchedule = schedule[teacher.id] || {};
                     let currentHours = 0;
                     for (let d = 0; d < 5; d++) {
@@ -613,7 +745,7 @@ export default function App() {
 
                     return (
                       <tr key={teacher.id} className="hover:bg-slate-50/50 transition-colors group">
-                        <td className="sticky left-0 z-10 h-10 bg-white group-hover:bg-slate-50/50 border-b border-b-slate-300 border-r-2 border-r-slate-400 p-2 font-medium text-slate-700 shadow-[1px_0_0_0_#cbd5e1] truncate max-w-[16rem]">
+                        <td className="sticky left-0 z-20 h-10 bg-white group-hover:bg-slate-50/50 border-b border-b-slate-300 border-r-2 border-r-slate-400 p-2 font-medium text-slate-700 shadow-[1px_0_0_0_#cbd5e1] truncate max-w-[16rem]">
                           <div className="flex justify-between items-center">
                             <span className="truncate pr-2">{teacher.name}</span>
                             <span className={`text-xs px-1.5 py-0.5 rounded flex-shrink-0 ${isOverHours ? 'bg-red-100 text-red-700 font-bold' : 'bg-slate-100 text-slate-600'}`}>
@@ -695,13 +827,14 @@ export default function App() {
                   })
                 ) : (
                   /* --- CLASS VIEW --- */
-                  parsedClasses.map((cls, rowIdx) => {
+                  classes.filter(cls => cls.toLowerCase().includes(searchQuery.toLowerCase())).map((cls) => {
+                    const rowIdx = classes.indexOf(cls);
                     const cSchedule = classSchedule[cls] || {};
                     const clsColor = getClassColor(cls);
 
                     return (
                       <tr key={cls} className="hover:bg-slate-50/50 transition-colors group">
-                        <td className={`sticky left-0 z-10 h-10 border-b border-b-slate-300 border-r-2 border-r-slate-400 p-2 font-bold shadow-[1px_0_0_0_#cbd5e1] truncate max-w-[16rem] ${clsColor}`}>
+                        <td className={`sticky left-0 z-20 h-10 border-b border-b-slate-300 border-r-2 border-r-slate-400 p-2 font-bold shadow-[1px_0_0_0_#cbd5e1] truncate max-w-[16rem] ${clsColor}`}>
                            {cls}
                         </td>
                         {DAYS.map((_, dIdx) => (
@@ -709,7 +842,7 @@ export default function App() {
                             {[...Array(8)].map((_, hIdx) => {
                               const cIdx = dIdx * 8 + hIdx;
                               const val = cSchedule[dIdx]?.[hIdx] || "";
-                              const teacherObj = parsedTeachers.find(t => t.id === val);
+                              const teacherObj = teachers.find(t => t.id === val);
                               const teacherName = teacherObj ? teacherObj.name : "";
                               const teacherColorClass = val ? getTeacherColor(val) : "";
                               const isFocused = focusedCell?.rowIdx === rowIdx && focusedCell?.cIdx === cIdx;
@@ -839,6 +972,46 @@ export default function App() {
           </div>
         </div>
       )}
+
+      {/* Info Modal */}
+      {showInfoModal && (
+        <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[100] flex items-center justify-center p-4" onClick={() => setShowInfoModal(false)}>
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm flex flex-col overflow-hidden" onClick={e => e.stopPropagation()}>
+            <div className="px-6 py-5 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+              <h2 className="text-base font-bold text-slate-800 flex items-center gap-2">
+                <Settings className="w-5 h-5 text-slate-500" />
+                Πληροφορίες
+              </h2>
+              <button onClick={() => setShowInfoModal(false)} className="text-slate-400 hover:text-slate-700 transition-colors p-1 rounded-md hover:bg-slate-200">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-6 space-y-4 text-center">
+              <div>
+                <p className="text-xs text-slate-400 font-medium tracking-wider mb-1">PROGRAM ARCHITECT</p>
+                <p className="text-lg font-bold text-slate-800">George Petrakis</p>
+              </div>
+              <div className="w-full h-px bg-slate-100 my-2"></div>
+              <div>
+                <p className="text-xs text-slate-400 font-medium tracking-wider mb-1">ΕΚΔΟΣΗ</p>
+                {/* Version Number - Update this manually when deploying new versions */}
+                <span className="inline-block px-3 py-1 bg-blue-50 text-blue-700 rounded-full font-bold text-sm">v.1.0</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+      <SettingsModal 
+        isOpen={showSettingsModal} 
+        onClose={() => setShowSettingsModal(false)}
+        teachers={teachers}
+        setTeachers={setTeachers}
+        classes={classes}
+        setClasses={setClasses}
+        schedule={schedule}
+        setSchedule={setSchedule}
+        onClearAll={handleClearAll}
+      />
     </div>
   );
 }

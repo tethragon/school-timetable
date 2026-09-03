@@ -9,3 +9,65 @@
     scrollbar-width: none;
   }
 }
+
+@media print {
+  @page {
+    /* Forcing landscape mode directly from the browser if supported */
+    size: A4 landscape;
+    margin: 10mm;
+  }
+  
+  html, body, #root {
+    height: auto !important;
+    overflow: visible !important;
+    background-color: white !important;
+  }
+
+  body {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  /* Remove all constraints that prevent printing multiple pages */
+  .h-screen, .h-full, .min-h-0, .overflow-hidden, .overflow-auto, .overflow-y-auto, .overflow-x-auto, main {
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+  }
+
+  header {
+    display: none !important;
+  }
+
+  /* Reset background colors for cleaner printing */
+  .bg-slate-50 {
+    background-color: white !important;
+  }
+
+  /* Keep the table structure intact but adjust sizes for print */
+  .w-max, .min-w-0 {
+    width: 100% !important;
+    min-width: unset !important;
+    max-width: none !important;
+  }
+  
+  /* Make text a bit smaller to fit width */
+  .text-xs {
+    font-size: 0.65rem !important;
+  }
+  
+  .text-sm {
+    font-size: 0.75rem !important;
+  }
+  
+  /* Prevent awkward page breaks */
+  tr, .break-inside-avoid {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  /* Optional: Force grid borders for clarity */
+  .border, .border-l, .border-b, .border-r, .border-t {
+    border-color: #cbd5e1 !important;
+  }
+}
