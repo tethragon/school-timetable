@@ -171,6 +171,13 @@ export function SettingsModal({
                   <Plus className="w-4 h-4" /> Προσθήκη
                 </button>
               </div>
+              <div className="mb-1 p-4 bg-blue-50/50 border border-blue-100 rounded-lg text-sm text-blue-800 leading-relaxed">
+                <span className="font-semibold text-blue-900 flex items-center gap-1.5 mb-1">
+                  <span className="text-base">ℹ️</span> Εικονικά Μαθήματα / Εργαστήρια
+                </span>
+                Τα μαθήματα <strong>ΑΓΓΛΙΚΑ</strong>, <strong>Β' ΞΕΝΗ ΓΛΩΣΣΑ</strong> και <strong>ΠΛΗΡΟΦΟΡΙΚΗ</strong> αναγνωρίζονται εξ ορισμού από το σύστημα και <strong>δεν χρειάζεται να τα προσθέσετε εδώ</strong> ως εικονικούς εκπαιδευτικούς. Επίσης, μην δηλώσετε τους εκπαιδευτικούς που διδάσκουν αυτά τα μαθήματα. Για τις ανάγκες του «σαλονιού» δεν χρειάζονται.<br/>
+                Μπορείτε να δημιουργήσετε ελεύθερα και <strong>άλλους εικονικούς εκπαιδευτικούς</strong> (που μπορούν να μπαίνουν σε πολλά τμήματα ταυτόχρονα). Απλώς προσθέστε το όνομα του μαθήματος (π.χ. ΜΟΥΣΙΚΗ) και ορίστε τις μέγιστες ώρες του στο <strong>0</strong>.
+              </div>
               <div className="flex flex-col gap-3">
                 {localTeachers.map((t, idx) => {
                   const isDuplicate = duplicateTeacherNames.includes(t.name.trim()) && t.name.trim() !== '';
