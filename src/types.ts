@@ -1,6 +1,7 @@
 export type Teacher = {
   id: string;
   name: string;
+  abbreviation?: string;
   maxHours: number;
   subject?: string; // Προαιρετικό μάθημα / ειδικότητα
 };
@@ -8,6 +9,7 @@ export type Teacher = {
 export type SubjectRule = {
   id: string;
   name: string;
+  abbreviation?: string;
   maxHours: number[]; // 6 elements for grades Α, Β, Γ, Δ, Ε, ΣΤ
 };
 

@@ -32,13 +32,13 @@ export function exportToCSV(schedule: ScheduleData, teachers: Teacher[], classes
     rows.push('');
     rows.push('---SYSTEM_DATA---');
     teachers.forEach(t => {
-        rows.push(`TEACHER,"${t.id}","${t.name}",${t.maxHours},"${t.subject || ''}"`);
+        rows.push(`TEACHER,"${t.id}","${t.name}",${t.maxHours},"${t.subject || ''}","${t.abbreviation || ''}"`);
     });
     classes.forEach(c => {
         rows.push(`CLASS,"${c}"`);
     });
     subjectRules.forEach(r => {
-        rows.push(`SUBJECT_RULE,"${r.id}","${r.name}",${r.maxHours.join(',')}`);
+        rows.push(`SUBJECT_RULE,"${r.id}","${r.name}",${r.maxHours.join(',')},"${r.abbreviation || ''}"`);
     });
 
     // Add BOM for Excel/Calc greek characters support
@@ -93,7 +93,8 @@ export function importFromCSV(file: File, currentTeachers: Teacher[]): Promise<{
                                 id: cols[1], 
                                 name: cols[2], 
                                 maxHours: parseInt(cols[3], 10) || 0,
-                                subject: cols[4] || undefined
+                                subject: cols[4] || undefined,
+                                abbreviation: cols[5] || undefined
                             });
                         } else if (cols[0] === 'CLASS' && cols.length >= 2) {
                             loadedClasses.push(cols[1]);
@@ -101,7 +102,8 @@ export function importFromCSV(file: File, currentTeachers: Teacher[]): Promise<{
                             loadedSubjectRules.push({
                                 id: cols[1],
                                 name: cols[2],
-                                maxHours: cols.slice(3, 9).map(n => parseInt(n, 10) || 0)
+                                maxHours: cols.slice(3, 9).map(n => parseInt(n, 10) || 0),
+                                abbreviation: cols[9] || undefined
                             });
                         }
                     }

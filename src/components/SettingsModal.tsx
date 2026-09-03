@@ -59,7 +59,7 @@ export function SettingsModal({
     setLocalTeachers(localTeachers.filter(t => t.id !== id));
   };
 
-  const updateTeacher = (id: string, field: 'name' | 'maxHours' | 'subject', value: string | number) => {
+  const updateTeacher = (id: string, field: 'name' | 'maxHours' | 'subject' | 'abbreviation', value: string | number) => {
     setLocalTeachers(localTeachers.map(t => t.id === id ? { ...t, [field]: value } : t));
   };
 
@@ -102,6 +102,9 @@ export function SettingsModal({
 
   const updateSubjectRuleName = (id: string, name: string) => {
     setLocalSubjectRules(localSubjectRules.map(r => r.id === id ? { ...r, name } : r));
+  };
+  const updateSubjectRuleAbbreviation = (id: string, abbreviation: string) => {
+    setLocalSubjectRules(localSubjectRules.map(r => r.id === id ? { ...r, abbreviation } : r));
   };
 
   const updateSubjectRuleHours = (id: string, gradeIdx: number, val: number) => {
@@ -186,6 +189,14 @@ export function SettingsModal({
                       className={`flex-1 px-3 py-1.5 border rounded-md text-sm focus:ring-2 focus:ring-blue-500 focus:outline-none ${isDuplicate ? 'border-red-400 text-red-900 bg-white' : 'border-slate-300'}`}
                       placeholder="Όνομα Εκπαιδευτικού"
                     />
+                    <input
+                      type="text"
+                      value={t.abbreviation || ''}
+                      onChange={(e) => updateTeacher(t.id, 'abbreviation', e.target.value)}
+                      className="w-24 px-2 py-1.5 border border-slate-300 rounded-md text-sm bg-white focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                      placeholder="Συντ."
+                      maxLength={15}
+                    />
                     <select
                       value={t.subject || ''}
                       onChange={(e) => updateTeacher(t.id, 'subject', e.target.value)}
@@ -265,6 +276,7 @@ export function SettingsModal({
               <div className="flex flex-col gap-3">
                 <div className="flex gap-2 px-2 pb-2 border-b text-xs font-semibold text-slate-500">
                   <div className="flex-1 pl-8">Μάθημα / Ειδικότητα</div>
+                  <div className="w-20 text-center">Συντ.</div>
                   <div className="w-10 text-center">Α</div>
                   <div className="w-10 text-center">Β</div>
                   <div className="w-10 text-center">Γ</div>
@@ -289,6 +301,14 @@ export function SettingsModal({
                       }}
                       className="flex-1 w-full px-2 py-1.5 border border-slate-300 rounded-md text-sm font-medium focus:ring-2 focus:ring-blue-500 focus:outline-none"
                       placeholder="Όνομα Μαθήματος"
+                    />
+                    <input
+                      type="text"
+                      value={r.abbreviation || ''}
+                      onChange={(e) => updateSubjectRuleAbbreviation(r.id, e.target.value)}
+                      className="w-24 px-2 py-1.5 border border-slate-300 rounded-md text-sm text-center bg-white focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                      placeholder="Συντ."
+                      maxLength={15}
                     />
                     {r.maxHours.map((hours, gIdx) => (
                       <input 

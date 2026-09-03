@@ -25,6 +25,15 @@ const CLASS_COLORS = [
   'bg-teal-100 text-teal-800 border-teal-200 hover:bg-teal-200/60'
 ];
 
+const normalizeGreek = (str: string) => {
+  if (!str) return "";
+  return str
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "") // Remove accents
+    .toLowerCase()
+    .replace(/ς/g, "σ"); // Normalize final sigma
+};
+
 export default function App() {
   const [teachers, setTeachers] = useState<Teacher[]>(() => {
     try {
@@ -232,6 +241,38 @@ export default function App() {
     return t ? t.name : val;
   };
 
+  const formatCellText = (val: string) => {
+    if (!val) return "";
+    
+    // Check if it's a teacher
+    const teacherObj = teachers.find(t => t.id === val);
+    if (teacherObj) {
+      if (teacherObj.subject) {
+        // Teacher has a specialty
+        const rule = subjectRules.find(sr => sr.name === teacherObj.subject);
+        const subjAbbr = rule?.abbreviation;
+        const teachAbbr = teacherObj.abbreviation;
+        
+        if (subjAbbr && teachAbbr) {
+          return `${subjAbbr} (${teachAbbr})`;
+        } else if (subjAbbr) {
+          return `${subjAbbr} (${teacherObj.name})`;
+        } else if (teachAbbr) {
+          return `${teacherObj.subject} (${teachAbbr})`;
+        }
+      }
+      return teacherObj.abbreviation || teacherObj.name;
+    }
+    
+    // Check if it's a subject directly
+    const rule = subjectRules.find(sr => sr.id === val || sr.name === val);
+    if (rule) {
+      return rule.abbreviation || rule.name;
+    }
+    
+    return val;
+  };
+
   const ALLOWED_SPECIAL_SUBJECTS = ["ΑΓΓΛΙΚΑ", "Β' ΞΕΝΗ ΓΛΩΣΣΑ", "ΠΛΗΡΟΦΟΡΙΚΗ"];
   const sortedOptions = viewMode === 'teacher' 
     ? ["", ...[...classes].sort((a, b) => a.localeCompare(b, 'el'))] 
@@ -328,15 +369,15 @@ export default function App() {
         e.preventDefault();
         setIsEditing(false);
       } else if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
-        const char = e.key.toLowerCase();
+        const char = normalizeGreek(e.key);
         let matchIdx = sortedOptions.findIndex((opt, idx) => {
            if (idx <= editIndex) return false;
-           const label = getOptionLabel(opt).toLowerCase();
+           const label = normalizeGreek(getOptionLabel(opt));
            return label.startsWith(char);
         });
         if (matchIdx === -1) {
            matchIdx = sortedOptions.findIndex(opt => {
-              const label = getOptionLabel(opt).toLowerCase();
+              const label = normalizeGreek(getOptionLabel(opt));
               return label.startsWith(char);
            });
         }
@@ -439,9 +480,9 @@ export default function App() {
       if (e.key === 'Enter') {
         setEditIndex(Math.max(0, sortedOptions.indexOf(currentVal)));
       } else {
-        const char = e.key.toLowerCase();
+        const char = normalizeGreek(e.key);
         const matchIdx = sortedOptions.findIndex(opt => {
-          const label = getOptionLabel(opt).toLowerCase();
+          const label = normalizeGreek(getOptionLabel(opt));
           return label.startsWith(char);
         });
         if (matchIdx !== -1) {
@@ -619,7 +660,7 @@ export default function App() {
           {viewMode === 'class-grid' ? (
             <div className="flex gap-8 items-start w-max pb-12">
             {Object.entries(classesByGrade).map(([grade, gradeClasses]) => {
-              const filteredClasses = gradeClasses.filter(cls => cls.toLowerCase().includes(searchQuery.toLowerCase()));
+              const filteredClasses = gradeClasses.filter(cls => normalizeGreek(cls).includes(normalizeGreek(searchQuery)));
               if (filteredClasses.length === 0) return null;
               
               return (
@@ -655,7 +696,7 @@ export default function App() {
                                 const cIdx = hIdx * 5 + dIdx;
                                 const val = cSchedule[dIdx]?.[hIdx] || "";
                                 const teacherObj = teachers.find(t => t.id === val);
-                                const teacherName = teacherObj ? teacherObj.name : val;
+                                const teacherName = formatCellText(val);
                                 const teacherColorClass = val ? getTeacherColor(val) : "";
                                 const isFocused = focusedCell?.rowIdx === rowIdx && focusedCell?.cIdx === cIdx;
                                 
@@ -763,7 +804,7 @@ export default function App() {
               <tbody>
                 {viewMode === 'teacher' ? (
                   /* --- TEACHER VIEW --- */
-                  teachers.filter(t => t.name.toLowerCase().includes(searchQuery.toLowerCase())).map((teacher) => {
+                  teachers.filter(t => normalizeGreek(t.name).includes(normalizeGreek(searchQuery))).map((teacher) => {
                     const rowIdx = teachers.findIndex(t => t.id === teacher.id);
                     const tSchedule = schedule[teacher.id] || {};
                     let currentHours = 0;
@@ -859,7 +900,7 @@ export default function App() {
                   })
                 ) : (
                   /* --- CLASS VIEW --- */
-                  classes.filter(cls => cls.toLowerCase().includes(searchQuery.toLowerCase())).map((cls) => {
+                  classes.filter(cls => normalizeGreek(cls).includes(normalizeGreek(searchQuery))).map((cls) => {
                     const rowIdx = classes.indexOf(cls);
                     const cSchedule = classSchedule[cls] || {};
                     const clsColor = getClassColor(cls);
@@ -875,7 +916,7 @@ export default function App() {
                               const cIdx = dIdx * 8 + hIdx;
                               const val = cSchedule[dIdx]?.[hIdx] || "";
                               const teacherObj = teachers.find(t => t.id === val);
-                              const teacherName = teacherObj ? teacherObj.name : val;
+                              const teacherName = formatCellText(val);
                               const teacherColorClass = val ? getTeacherColor(val) : "";
                               const isFocused = focusedCell?.rowIdx === rowIdx && focusedCell?.cIdx === cIdx;
                               const isLastHour = hIdx === 7;
@@ -1027,7 +1068,7 @@ export default function App() {
               <div>
                 <p className="text-xs text-slate-400 font-medium tracking-wider mb-1">ΕΚΔΟΣΗ</p>
                 {/* Version Number - Update this manually when deploying new versions */}
-                <span className="inline-block px-3 py-1 bg-blue-50 text-blue-700 rounded-full font-bold text-sm">v.0.9b</span>
+                <span className="inline-block px-3 py-1 bg-blue-50 text-blue-700 rounded-full font-bold text-sm">v.0.92b.20260903</span>
               </div>
             </div>
           </div>
