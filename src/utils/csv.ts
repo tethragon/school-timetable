@@ -10,7 +10,14 @@ export function exportToCSV(schedule: ScheduleData, teachers: Teacher[], classes
     }
     const rows = [header.join(',')];
 
-    teachers.forEach(t => {
+    const ALLOWED_SPECIAL_SUBJECTS = ["ΑΓΓΛΙΚΑ", "Β' ΞΕΝΗ ΓΛΩΣΣΑ", "ΠΛΗΡΟΦΟΡΙΚΗ"];
+    const specialSubjects = subjectRules.filter(sr => ALLOWED_SPECIAL_SUBJECTS.includes(sr.name));
+    const allRowEntities = [
+        ...teachers,
+        ...specialSubjects.map(sr => ({ id: sr.name, name: sr.name, maxHours: 0, subject: sr.name }))
+    ];
+
+    allRowEntities.forEach(t => {
         const row = [`"${t.name}"`, t.maxHours.toString()];
         for (let d = 0; d < 5; d++) {
             for (let h = 0; h < 8; h++) {
@@ -105,22 +112,27 @@ export function importFromCSV(file: File, currentTeachers: Teacher[]): Promise<{
 
                 // Pass 2: Parse schedule
                 const endIdx = hasSystemData ? systemDataIdx : lines.length;
+                const ALLOWED_SPECIAL_SUBJECTS = ["ΑΓΓΛΙΚΑ", "Β' ΞΕΝΗ ΓΛΩΣΣΑ", "ΠΛΗΡΟΦΟΡΙΚΗ"];
                 for (let i = 1; i < endIdx; i++) {
                     const cols = parseCSVRow(lines[i]);
                     const tName = cols[0];
                     if (!tName) continue;
                     
                     const teacher = effectiveTeachers.find(t => t.name === tName);
-                    if (!teacher) continue;
+                    let rowId = teacher ? teacher.id : null;
+                    if (!rowId && ALLOWED_SPECIAL_SUBJECTS.includes(tName)) {
+                        rowId = tName; // The ID of a special subject in the schedule is its name
+                    }
+                    if (!rowId) continue;
 
-                    newSchedule[teacher.id] = {};
+                    newSchedule[rowId] = {};
                     let colIdx = 2;
                     for (let d = 0; d < 5; d++) {
-                        newSchedule[teacher.id][d] = {};
+                        newSchedule[rowId][d] = {};
                         for (let h = 0; h < 8; h++) {
                             const val = cols[colIdx++];
                             if (val) {
-                                newSchedule[teacher.id][d][h] = val.split(',').map(s => s.trim()).filter(Boolean);
+                                newSchedule[rowId][d][h] = val.split(',').map(s => s.trim()).filter(Boolean);
                             }
                         }
                     }
