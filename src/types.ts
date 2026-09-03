@@ -45,3 +45,9 @@ export const DEFAULT_SUBJECT_RULES: SubjectRule[] = [
   { id: 'sr9', name: "ΘΕΑΤΡΙΚΗ ΑΓΩΓΗ", maxHours: [1, 1, 1, 1, 1, 1] },
 ];
 
+
+export type HistoryAction = {
+  id: string;
+  description: string;
+  oldSchedule: ScheduleData;
+};

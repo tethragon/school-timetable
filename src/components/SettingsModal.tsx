@@ -14,10 +14,11 @@ interface SettingsModalProps {
   schedule: any; // Using any for brevity here, or could import ScheduleData
   setSchedule: any;
   onClearAll: () => void;
+  onSave?: () => void;
 }
 
 export function SettingsModal({
-  isOpen, onClose, teachers, setTeachers, classes, setClasses, subjectRules, setSubjectRules, onClearAll
+  isOpen, onClose, teachers, setTeachers, classes, setClasses, subjectRules, setSubjectRules, onClearAll, onSave
 }: SettingsModalProps) {
   const [activeTab, setActiveTab] = useState<'teachers' | 'classes' | 'subjects'>('teachers');
   
@@ -41,6 +42,7 @@ export function SettingsModal({
     setTeachers(localTeachers.filter(t => t.name.trim() !== ''));
     setClasses(localClasses.filter(c => c.trim() !== ''));
     setSubjectRules(localSubjectRules.filter(r => r.name.trim() !== ''));
+    if (onSave) onSave();
     onClose();
   };
 

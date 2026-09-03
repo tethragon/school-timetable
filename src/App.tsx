@@ -1,7 +1,7 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { AlertCircle, CheckCircle2, Download, Upload, List, X, Users, BookOpen, Printer, Settings, Search } from 'lucide-react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { AlertCircle, CheckCircle2, Download, Upload, List, X, Users, BookOpen, Printer, Settings, Search, Undo2, ChevronDown } from 'lucide-react';
 import { useValidation } from './hooks/useValidation';
-import { ScheduleData, Teacher, SubjectRule, DEFAULT_SUBJECT_RULES } from './types';
+import { ScheduleData, Teacher, SubjectRule, DEFAULT_SUBJECT_RULES, HistoryAction } from './types';
 import { exportToCSV, importFromCSV } from './utils/csv';
 import { SettingsModal } from './components/SettingsModal';
 
@@ -80,6 +80,8 @@ export default function App() {
   const [viewMode, setViewMode] = useState<'teacher' | 'teacher-grid' | 'class-horizontal' | 'class-grid'>('teacher');
   const [showInfoModal, setShowInfoModal] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [history, setHistory] = useState<HistoryAction[]>([]);
+  const [showHistoryDropdown, setShowHistoryDropdown] = useState(false);
   
   // Auto-save to localStorage
   useEffect(() => {
@@ -173,9 +175,41 @@ export default function App() {
     });
   });
 
+  const handleUndo = useCallback(() => {
+    if (history.length === 0) return;
+    const lastAction = history[0];
+    setSchedule(lastAction.oldSchedule);
+    setHistory(prev => prev.slice(1));
+  }, [history, setSchedule, setHistory]);
+
+  useEffect(() => {
+    const handleKeyDownGlobal = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === 'z' || e.key.toLowerCase() === 'ζ' || e.code === 'KeyZ')) {
+        if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
+          return;
+        }
+        e.preventDefault();
+        handleUndo();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDownGlobal);
+    return () => window.removeEventListener('keydown', handleKeyDownGlobal);
+  }, [handleUndo]);
+
   const updateCell = (teacherId: string, day: number, hour: number, classId: string) => {
+    const teacher = teachers.find(t => t.id === teacherId);
+    const teacherName = teacher ? teacher.name : teacherId;
+    const description = classId === "" 
+      ? `Διαγραφή μαθήματος - ${teacherName} (${DAYS[day]} ${hour + 1}η)`
+      : `Ανάθεση ${classId} στον/στην ${teacherName} (${DAYS[day]} ${hour + 1}η)`;
+    
+    setHistory(prev => {
+      const newHistory = [{ id: Date.now().toString() + Math.random(), description, oldSchedule: JSON.parse(JSON.stringify(schedule)) }, ...prev];
+      return newHistory.slice(0, 30);
+    });
+
     setSchedule(prev => {
-      const newState = { ...prev };
+      const newState = JSON.parse(JSON.stringify(prev));
       if (!newState[teacherId]) newState[teacherId] = {};
       if (!newState[teacherId][day]) newState[teacherId][day] = {};
 
@@ -197,8 +231,19 @@ export default function App() {
   };
 
   const updateClassCell = (classId: string, day: number, hour: number, newTeacherId: string) => {
+    const teacher = teachers.find(t => t.id === newTeacherId);
+    const teacherName = teacher ? teacher.name : newTeacherId;
+    const description = newTeacherId === ""
+      ? `Διαγραφή ώρας - ${classId} (${DAYS[day]} ${hour + 1}η)`
+      : `Ανάθεση ${teacherName} στο ${classId} (${DAYS[day]} ${hour + 1}η)`;
+    
+    setHistory(prev => {
+      const newHistory = [{ id: Date.now().toString() + Math.random(), description, oldSchedule: JSON.parse(JSON.stringify(schedule)) }, ...prev];
+      return newHistory.slice(0, 30);
+    });
+
     setSchedule(prev => {
-      const newState = { ...prev };
+      const newState = JSON.parse(JSON.stringify(prev));
       
       // Remove any teacher currently assigned to this class at this day/hour
       Object.keys(newState).forEach(tId => {
@@ -233,9 +278,10 @@ export default function App() {
                  });
              });
          }
-
+         
          newState[newTeacherId][day][hour] = classesToAssign;
       }
+
       return newState;
     });
   };
@@ -292,6 +338,9 @@ export default function App() {
     : ["", ...displayTeachers.map(t => t.id)];
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
+      return;
+    }
     if (!focusedCell) return;
 
     if ((e.code === 'KeyC' || e.code === 'KeyV') && (e.ctrlKey || e.metaKey)) {
@@ -545,6 +594,7 @@ export default function App() {
           }
         }
         setSchedule(data.schedule);
+        setHistory([]);
       } catch (err) {
         alert('Υπήρξε σφάλμα κατά την ανάγνωση του αρχείου.');
         console.error(err);
@@ -558,12 +608,34 @@ export default function App() {
       setTeachers([]);
       setClasses([]);
       setSchedule({});
+      setHistory([]);
       localStorage.removeItem('school_teachers');
       localStorage.removeItem('school_classes');
       localStorage.removeItem('school_schedule_auto_save');
       setShowSettingsModal(false);
     }
   };
+
+  const doesClassMatchSearch = useCallback((cls: string, q: string) => {
+    if (!q) return true;
+    const normQ = normalizeGreek(q);
+    if (normalizeGreek(cls).includes(normQ)) return true;
+
+    const cSchedule = classSchedule[cls] || {};
+    for (let d = 0; d < 5; d++) {
+      for (let h = 0; h < 8; h++) {
+        const val = cSchedule[d]?.[h];
+        if (val) {
+          const teacherObj = teachers.find(t => t.id === val);
+          const teacherName = teacherObj ? teacherObj.name : val;
+          if (normalizeGreek(val).includes(normQ) || normalizeGreek(teacherName).includes(normQ)) {
+            return true;
+          }
+        }
+      }
+    }
+    return false;
+  }, [classSchedule, teachers]);
 
   return (
     <div 
@@ -630,13 +702,70 @@ export default function App() {
         </div>
 
         <div className="flex flex-wrap items-center gap-2 xl:gap-3">
+          {/* Undo Action Bar */}
+          <div className="flex items-center bg-slate-100 rounded-lg border border-slate-200 p-1 relative">
+            <button
+              onClick={handleUndo}
+              disabled={history.length === 0}
+              className={`p-1.5 rounded-md transition-colors flex items-center justify-center ${history.length > 0 ? 'text-slate-700 hover:bg-white hover:shadow-sm' : 'text-slate-300 cursor-not-allowed'}`}
+              title="Αναίρεση (Ctrl+Z)"
+            >
+              <Undo2 className="w-4 h-4" />
+            </button>
+            <div className="w-px h-4 bg-slate-200 mx-1"></div>
+            <button
+              onClick={() => setShowHistoryDropdown(!showHistoryDropdown)}
+              disabled={history.length === 0}
+              className={`flex items-center gap-2 px-2 py-1 text-xs font-medium rounded-md transition-colors min-w-[12rem] max-w-[16rem] ${history.length > 0 ? 'text-slate-600 hover:bg-white hover:shadow-sm cursor-pointer' : 'text-slate-400 cursor-not-allowed'}`}
+            >
+              <span className="truncate flex-1 text-left">
+                {history.length > 0 ? history[0].description : 'Καμία ενέργεια'}
+              </span>
+              <ChevronDown className="w-3 h-3 flex-shrink-0" />
+            </button>
+
+            {showHistoryDropdown && history.length > 0 && (
+              <div 
+                className="absolute top-full left-0 mt-1 w-64 bg-white border border-slate-200 shadow-lg rounded-lg overflow-hidden z-50"
+                onMouseLeave={() => setShowHistoryDropdown(false)}
+              >
+                <div className="px-3 py-2 bg-slate-50 border-b border-slate-100 font-semibold text-xs text-slate-500 uppercase tracking-wider">
+                  Ιστορικό Ενεργειών (Τελευταίες {history.length})
+                </div>
+                <div className="max-h-64 overflow-y-auto">
+                  {history.slice(0, 10).map((action, idx) => (
+                    <button 
+                      key={action.id} 
+                      onClick={() => {
+                        const targetAction = history[idx];
+                        setSchedule(targetAction.oldSchedule);
+                        setHistory(prev => prev.slice(idx + 1));
+                        setShowHistoryDropdown(false);
+                      }}
+                      className="w-full text-left px-3 py-2 text-xs border-b border-slate-50 last:border-0 hover:bg-slate-50 text-slate-600 focus:outline-none focus:bg-slate-100 transition-colors"
+                      title="Επαναφορά σε αυτό το σημείο"
+                    >
+                      <span className="opacity-50 mr-2">{idx + 1}.</span> {action.description}
+                    </button>
+                  ))}
+                  {history.length > 10 && (
+                    <div className="px-3 py-2 text-xs text-center text-slate-400 bg-slate-50 italic">
+                      ...και άλλες {history.length - 10}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+
           <div className="relative">
             <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
             <input 
               type="text" 
-              placeholder={['teacher', 'teacher-grid'].includes(viewMode) ? 'Αναζήτηση Εκπαιδευτικού...' : 'Αναζήτηση Τμήματος...'}
+              placeholder={['teacher', 'teacher-grid'].includes(viewMode) ? 'Αναζήτηση Εκπαιδευτικού...' : 'Αναζήτηση τμήματος, εκπαιδευτικού...'}
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
+              onFocus={() => setFocusedCell(null)}
               className="pl-9 pr-8 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white w-40 sm:w-48 xl:w-64 transition-all placeholder:text-slate-400"
             />
             {searchQuery && (
@@ -693,13 +822,13 @@ export default function App() {
       <main className="flex-1 bg-slate-50 relative flex flex-col overflow-hidden">
         <div className={`p-6 w-full flex-1 flex flex-col min-w-0 ${['class-grid', 'teacher-grid'].includes(viewMode) ? 'overflow-auto' : 'overflow-hidden'}`}>
           {['class-grid', 'teacher-grid'].includes(viewMode) ? (
-            <div className={viewMode === 'class-grid' ? "flex gap-8 items-start w-max pb-12" : "grid grid-cols-1 xl:grid-cols-2 2xl:grid-cols-3 gap-8 pb-12 items-start"}>
+            <div className={viewMode === 'class-grid' ? "flex gap-5 items-start w-max pb-8" : "grid grid-cols-1 xl:grid-cols-2 2xl:grid-cols-3 gap-5 pb-8 items-start"}>
             {viewMode === 'class-grid' ? ( Object.entries(classesByGrade).map(([grade, gradeClasses]) => {
-              const filteredClasses = gradeClasses.filter(cls => normalizeGreek(cls).includes(normalizeGreek(searchQuery)));
+              const filteredClasses = gradeClasses.filter(cls => doesClassMatchSearch(cls, searchQuery));
               if (filteredClasses.length === 0) return null;
               
               return (
-              <div key={grade} className="flex flex-col gap-6 shrink-0">
+              <div key={grade} className="flex flex-col gap-4 shrink-0">
                 {filteredClasses.map(cls => {
                   const rowIdx = classes.indexOf(cls);
                   const cSchedule = classSchedule[cls] || {};
@@ -707,15 +836,15 @@ export default function App() {
 
                   return (
                     <div key={cls} className="bg-white border border-slate-200 rounded-lg shadow-sm w-max relative">
-                      <div className={`px-4 py-2 font-bold text-center border-b border-slate-200 rounded-t-lg ${clsColor}`}>
+                      <div className={`px-4 py-1.5 font-bold text-center border-b border-slate-200 rounded-t-lg ${clsColor}`}>
                         Τμήμα {cls}
                       </div>
                       <table className="border-collapse text-sm">
                         <thead>
                           <tr>
-                            <th className="w-12 h-10 border-b border-r border-slate-200 bg-slate-50 text-slate-500 font-normal">Ώρα</th>
+                            <th className="w-12 h-8 border-b border-r border-slate-200 bg-slate-50 text-slate-500 font-normal">Ώρα</th>
                             {DAYS.map(d => (
-                              <th key={d} className="w-24 h-10 border-b border-r last:border-r-0 border-slate-200 bg-slate-50 text-slate-700 p-1 font-semibold">
+                              <th key={d} className="w-24 h-8 border-b border-r last:border-r-0 border-slate-200 bg-slate-50 text-slate-700 p-1 font-semibold">
                                 {d.substring(0,3)}
                               </th>
                             ))}
@@ -724,7 +853,7 @@ export default function App() {
                         <tbody>
                           {[...Array(8)].map((_, hIdx) => (
                             <tr key={hIdx}>
-                              <td className="border-r border-b border-slate-200 bg-slate-50 text-center text-xs text-slate-500 font-medium h-12">
+                              <td className="border-r border-b border-slate-200 bg-slate-50 text-center text-xs text-slate-500 font-medium h-10">
                                 {hIdx + 1}η
                               </td>
                               {[...Array(5)].map((_, dIdx) => {
@@ -734,9 +863,10 @@ export default function App() {
                                 const teacherName = formatCellText(val);
                                 const teacherColorClass = val ? getTeacherColor(val) : "";
                                 const isFocused = focusedCell?.rowIdx === rowIdx && focusedCell?.cIdx === cIdx;
+                                const isSearchMatch = searchQuery && val && (normalizeGreek(val).includes(normalizeGreek(searchQuery)) || (teacherObj && normalizeGreek(teacherObj.name).includes(normalizeGreek(searchQuery))));
                                 
                                 return (
-                                  <td key={dIdx} className="p-0 relative h-12 border-b border-r last:border-r-0 border-slate-200 bg-white">
+                                  <td key={dIdx} className="p-0 relative h-10 border-b border-r last:border-r-0 border-slate-200 bg-white">
                                     <div
                                       id={`cell-${rowIdx}-${cIdx}`}
                                       tabIndex={-1}
@@ -760,7 +890,7 @@ export default function App() {
                                       }}
                                       className={`w-full h-full px-1 flex items-center justify-center text-xs text-center cursor-pointer outline-none select-none transition-colors
                                         ${isFocused && !isEditing ? 'ring-2 ring-inset ring-blue-500 z-10 bg-blue-50' : ''}
-                                        ${!isFocused && val ? `${teacherColorClass} font-medium` : 'text-slate-500 hover:bg-slate-50'}`}
+                                        ${isSearchMatch && !isFocused ? 'ring-2 ring-inset ring-amber-400 bg-amber-100 z-10 font-bold text-amber-900' : (!isFocused && val ? `${teacherColorClass} font-medium` : 'text-slate-500 hover:bg-slate-50')}`}
                                     >
                                       <span className="line-clamp-2 leading-tight">{teacherName}</span>
                                     </div>
@@ -811,18 +941,18 @@ export default function App() {
               const hoursDisplay = teacher.maxHours === 0 ? currentHours : `${currentHours}/${teacher.maxHours}`;
               return (
                 <div key={teacher.id} className="bg-white border border-slate-200 rounded-lg shadow-sm w-max relative shrink-0">
-                  <div className="px-4 py-2 font-bold text-center border-b border-slate-200 rounded-t-lg bg-slate-100 text-slate-700 flex justify-between items-center gap-4">
+                  <div className="px-4 py-1.5 font-bold text-center border-b border-slate-200 rounded-t-lg bg-slate-100 text-slate-700 flex justify-between items-center gap-4">
                     <span className="truncate max-w-[12rem]">{teacher.name}</span>
                     <span className={`text-xs px-1.5 py-0.5 rounded flex-shrink-0 ${isOverHours ? 'bg-red-100 text-red-700' : 'bg-white border border-slate-200'}`}>{hoursDisplay}</span>
                   </div>
                   <table className="border-collapse text-sm">
-                    <thead><tr><th className="w-12 h-10 border-b border-r border-slate-200 bg-slate-50 text-slate-500 font-normal">Ώρα</th>
-                    {DAYS.map(d => <th key={d} className="w-24 h-10 border-b border-r last:border-r-0 border-slate-200 bg-slate-50 text-slate-700 p-1 font-semibold">{d.substring(0,3)}</th>)}
+                    <thead><tr><th className="w-12 h-8 border-b border-r border-slate-200 bg-slate-50 text-slate-500 font-normal">Ώρα</th>
+                    {DAYS.map(d => <th key={d} className="w-24 h-8 border-b border-r last:border-r-0 border-slate-200 bg-slate-50 text-slate-700 p-1 font-semibold">{d.substring(0,3)}</th>)}
                     </tr></thead>
                     <tbody>
                       {[...Array(8)].map((_, hIdx) => (
                         <tr key={hIdx}>
-                          <td className="border-r border-b border-slate-200 bg-slate-50 text-center text-xs text-slate-500 font-medium h-12">{hIdx + 1}η</td>
+                          <td className="border-r border-b border-slate-200 bg-slate-50 text-center text-xs text-slate-500 font-medium h-10">{hIdx + 1}η</td>
                           {[...Array(5)].map((_, dIdx) => {
                             const cIdx = hIdx * 5 + dIdx;
                             const cellClasses = tSchedule[dIdx]?.[hIdx] || [];
@@ -830,7 +960,7 @@ export default function App() {
                             const clsColor = val ? getClassColor(val) : "";
                             const isFocused = focusedCell?.rowIdx === rowIdx && focusedCell?.cIdx === cIdx;
                             return (
-                              <td key={dIdx} className="p-0 relative h-12 border-b border-r last:border-r-0 border-slate-200 bg-white">
+                              <td key={dIdx} className="p-0 relative h-10 border-b border-r last:border-r-0 border-slate-200 bg-white">
                                 <div
                                   id={`cell-${rowIdx}-${cIdx}`}
                                   tabIndex={-1}
@@ -1007,7 +1137,7 @@ export default function App() {
                   })
                 ) : (
                   /* --- CLASS VIEW --- */
-                  classes.filter(cls => normalizeGreek(cls).includes(normalizeGreek(searchQuery))).map((cls) => {
+                  classes.filter(cls => doesClassMatchSearch(cls, searchQuery)).map((cls) => {
                     const rowIdx = classes.indexOf(cls);
                     const cSchedule = classSchedule[cls] || {};
                     const clsColor = getClassColor(cls);
@@ -1027,6 +1157,7 @@ export default function App() {
                               const teacherColorClass = val ? getTeacherColor(val) : "";
                               const isFocused = focusedCell?.rowIdx === rowIdx && focusedCell?.cIdx === cIdx;
                               const isLastHour = hIdx === 7;
+                              const isSearchMatch = searchQuery && val && (normalizeGreek(val).includes(normalizeGreek(searchQuery)) || (teacherObj && normalizeGreek(teacherObj.name).includes(normalizeGreek(searchQuery))));
                               
                               return (
                                 <td key={hIdx} className={`p-0 relative h-10 min-w-[80px] bg-white border-b border-b-slate-200 ${isLastHour ? 'border-r-2 border-r-slate-400' : 'border-r border-r-slate-200'}`}>
@@ -1053,7 +1184,7 @@ export default function App() {
                                     }}
                                     className={`w-full h-full px-1 flex items-center justify-center text-xs text-center cursor-pointer outline-none select-none transition-colors
                                       ${isFocused && !isEditing ? 'ring-2 ring-inset ring-blue-500 z-10 bg-blue-50' : ''}
-                                      ${!isFocused && val ? `${teacherColorClass} font-medium` : 'text-slate-500 hover:bg-slate-50'}`}
+                                      ${isSearchMatch && !isFocused ? 'ring-2 ring-inset ring-amber-400 bg-amber-100 z-10 font-bold text-amber-900' : (!isFocused && val ? `${teacherColorClass} font-medium` : 'text-slate-500 hover:bg-slate-50')}`}
                                   >
                                     <span className="line-clamp-2 leading-tight">{teacherName}</span>
                                   </div>
@@ -1175,7 +1306,7 @@ export default function App() {
               <div>
                 <p className="text-xs text-slate-400 font-medium tracking-wider mb-1">ΕΚΔΟΣΗ</p>
                 {/* Version Number - Update this manually when deploying new versions */}
-                <span className="inline-block px-3 py-1 bg-blue-50 text-blue-700 rounded-full font-bold text-sm">v.0.93b.20260903</span>
+                <span className="inline-block px-3 py-1 bg-blue-50 text-blue-700 rounded-full font-bold text-sm">v.0.99b.20260903</span>
               </div>
             </div>
           </div>
@@ -1193,6 +1324,7 @@ export default function App() {
         schedule={schedule}
         setSchedule={setSchedule}
         onClearAll={handleClearAll}
+        onSave={() => setHistory([])}
       />
     </div>
   );
