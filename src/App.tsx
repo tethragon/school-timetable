@@ -77,7 +77,7 @@ export default function App() {
   
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [showErrorsModal, setShowErrorsModal] = useState(false);
-  const [viewMode, setViewMode] = useState<'teacher' | 'class-horizontal' | 'class-grid'>('teacher');
+  const [viewMode, setViewMode] = useState<'teacher' | 'teacher-grid' | 'class-horizontal' | 'class-grid'>('teacher');
   const [showInfoModal, setShowInfoModal] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   
@@ -134,8 +134,22 @@ export default function App() {
 
   const errors = useValidation(schedule, teachers, classes, subjectRules);
 
+  const ALLOWED_SPECIAL_SUBJECTS = ["ΑΓΓΛΙΚΑ", "Β' ΞΕΝΗ ΓΛΩΣΣΑ", "ΠΛΗΡΟΦΟΡΙΚΗ"];
+  const displayTeachers = [
+    ...teachers,
+    ...subjectRules
+      .filter(sr => ALLOWED_SPECIAL_SUBJECTS.includes(sr.name) && !teachers.some(t => t.name === sr.name || t.subject === sr.name))
+      .map(sr => ({
+        id: sr.name,
+        name: sr.name,
+        maxHours: 0,
+        subject: sr.name,
+        abbreviation: sr.abbreviation
+      }))
+  ].sort((a, b) => a.name.localeCompare(b.name, 'el'));
+
   const numCols = 40; // 5 days * 8 hours
-  const numRows = viewMode === 'teacher' ? teachers.length : classes.length;
+  const numRows = ['teacher', 'teacher-grid'].includes(viewMode) ? displayTeachers.length : classes.length;
 
   useEffect(() => {
     if (focusedCell && !isEditing) {
@@ -236,7 +250,7 @@ export default function App() {
 
   const getOptionLabel = (val: string) => {
     if (!val) return "Κενό";
-    if (viewMode === 'teacher') return val; // it's a classId
+    if (['teacher', 'teacher-grid'].includes(viewMode)) return val; // it's a classId
     const t = teachers.find(x => x.id === val);
     return t ? t.name : val;
   };
@@ -273,18 +287,9 @@ export default function App() {
     return val;
   };
 
-  const ALLOWED_SPECIAL_SUBJECTS = ["ΑΓΓΛΙΚΑ", "Β' ΞΕΝΗ ΓΛΩΣΣΑ", "ΠΛΗΡΟΦΟΡΙΚΗ"];
-  const sortedOptions = viewMode === 'teacher' 
+  const sortedOptions = ['teacher', 'teacher-grid'].includes(viewMode)
     ? ["", ...[...classes].sort((a, b) => a.localeCompare(b, 'el'))] 
-    : [
-        "", 
-        ...[
-          ...teachers.map(t => t.id),
-          ...subjectRules
-            .filter(sr => ALLOWED_SPECIAL_SUBJECTS.includes(sr.name) && !teachers.some(t => t.name === sr.name || t.subject === sr.name))
-            .map(sr => sr.name)
-        ].sort((a, b) => getOptionLabel(a).localeCompare(getOptionLabel(b), 'el'))
-      ];
+    : ["", ...displayTeachers.map(t => t.id)];
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (!focusedCell) return;
@@ -292,7 +297,7 @@ export default function App() {
     if ((e.code === 'KeyC' || e.code === 'KeyV') && (e.ctrlKey || e.metaKey)) {
       e.preventDefault();
       let dIdx, hIdx;
-      if (viewMode === 'class-grid') {
+      if (['class-grid', 'teacher-grid'].includes(viewMode)) {
         dIdx = focusedCell.cIdx % 5;
         hIdx = Math.floor(focusedCell.cIdx / 5);
       } else {
@@ -301,19 +306,19 @@ export default function App() {
       }
       
       let currentVal = "";
-      if (viewMode === 'teacher') {
-        const cellClasses = schedule[teachers[focusedCell.rowIdx].id]?.[dIdx]?.[hIdx] || [];
+      if (['teacher', 'teacher-grid'].includes(viewMode)) {
+        const cellClasses = schedule[displayTeachers[focusedCell.rowIdx].id]?.[dIdx]?.[hIdx] || [];
         currentVal = cellClasses[0] || "";
       } else {
         currentVal = classSchedule[classes[focusedCell.rowIdx]]?.[dIdx]?.[hIdx] || "";
       }
 
       if (e.code === 'KeyC' && currentVal) {
-        setInternalClipboard({ type: viewMode === 'teacher' ? 'class' : 'teacher', val: currentVal });
+        setInternalClipboard({ type: ['teacher', 'teacher-grid'].includes(viewMode) ? 'class' : 'teacher', val: currentVal });
       } else if (e.code === 'KeyV' && internalClipboard) {
-        if (viewMode === 'teacher' && internalClipboard.type === 'class') {
-           updateCell(teachers[focusedCell.rowIdx].id, dIdx, hIdx, internalClipboard.val);
-        } else if (viewMode !== 'teacher' && internalClipboard.type === 'teacher') {
+        if (['teacher', 'teacher-grid'].includes(viewMode) && internalClipboard.type === 'class') {
+           updateCell(displayTeachers[focusedCell.rowIdx].id, dIdx, hIdx, internalClipboard.val);
+        } else if (!['teacher', 'teacher-grid'].includes(viewMode) && internalClipboard.type === 'teacher') {
            updateClassCell(classes[focusedCell.rowIdx], dIdx, hIdx, internalClipboard.val);
         }
       }
@@ -323,15 +328,15 @@ export default function App() {
     if (e.key === 'Delete' || e.key === 'Backspace') {
       e.preventDefault();
       let dIdx, hIdx;
-      if (viewMode === 'class-grid') {
+      if (['class-grid', 'teacher-grid'].includes(viewMode)) {
         dIdx = focusedCell.cIdx % 5;
         hIdx = Math.floor(focusedCell.cIdx / 5);
       } else {
         dIdx = Math.floor(focusedCell.cIdx / 8);
         hIdx = focusedCell.cIdx % 8;
       }
-      if (viewMode === 'teacher') {
-        updateCell(teachers[focusedCell.rowIdx].id, dIdx, hIdx, "");
+      if (['teacher', 'teacher-grid'].includes(viewMode)) {
+        updateCell(displayTeachers[focusedCell.rowIdx].id, dIdx, hIdx, "");
       } else {
         updateClassCell(classes[focusedCell.rowIdx], dIdx, hIdx, "");
       }
@@ -349,7 +354,7 @@ export default function App() {
       } else if (e.key === 'Enter') {
         e.preventDefault();
         let dIdx, hIdx;
-        if (viewMode === 'class-grid') {
+        if (['class-grid', 'teacher-grid'].includes(viewMode)) {
           dIdx = focusedCell.cIdx % 5;
           hIdx = Math.floor(focusedCell.cIdx / 5);
         } else {
@@ -359,8 +364,8 @@ export default function App() {
 
         const selectedVal = sortedOptions[editIndex];
         
-        if (viewMode === 'teacher') {
-          updateCell(teachers[focusedCell.rowIdx].id, dIdx, hIdx, selectedVal);
+        if (['teacher', 'teacher-grid'].includes(viewMode)) {
+          updateCell(displayTeachers[focusedCell.rowIdx].id, dIdx, hIdx, selectedVal);
         } else {
           updateClassCell(classes[focusedCell.rowIdx], dIdx, hIdx, selectedVal);
         }
@@ -439,6 +444,28 @@ export default function App() {
         nextRow = classes.indexOf(targetGradeClasses[newClassInGradeIdx]);
         nextCol = newHIdx * 5 + newDIdx;
       }
+    } else if (viewMode === 'teacher-grid') {
+      if (['ArrowRight', 'ArrowLeft', 'ArrowDown', 'ArrowUp'].includes(e.key)) {
+        e.preventDefault();
+        
+        let rIdx = focusedCell.rowIdx;
+        let cIdx = focusedCell.cIdx;
+        const dIdx = cIdx % 5;
+        const hIdx = Math.floor(cIdx / 5);
+
+        if (e.key === 'ArrowRight') {
+            if (dIdx < 4) cIdx++; else if (rIdx < numRows - 1) { rIdx++; cIdx -= 4; }
+        } else if (e.key === 'ArrowLeft') {
+            if (dIdx > 0) cIdx--; else if (rIdx > 0) { rIdx--; cIdx += 4; }
+        } else if (e.key === 'ArrowDown') {
+            if (hIdx < 7) cIdx += 5; else if (rIdx < numRows - 1) { rIdx++; cIdx = dIdx; } 
+        } else if (e.key === 'ArrowUp') {
+            if (hIdx > 0) cIdx -= 5; else if (rIdx > 0) { rIdx--; cIdx = 35 + dIdx; }
+        }
+        
+        nextRow = rIdx;
+        nextCol = cIdx;
+      }
     } else {
       if (e.key === 'ArrowRight') {
         e.preventDefault();
@@ -461,7 +488,7 @@ export default function App() {
       e.preventDefault();
       setIsEditing(true);
       let dIdx, hIdx;
-      if (viewMode === 'class-grid') {
+      if (['class-grid', 'teacher-grid'].includes(viewMode)) {
         dIdx = focusedCell.cIdx % 5;
         hIdx = Math.floor(focusedCell.cIdx / 5);
       } else {
@@ -470,8 +497,8 @@ export default function App() {
       }
       
       let currentVal = "";
-      if (viewMode === 'teacher') {
-        const cellClasses = schedule[teachers[focusedCell.rowIdx].id]?.[dIdx]?.[hIdx] || [];
+      if (['teacher', 'teacher-grid'].includes(viewMode)) {
+        const cellClasses = schedule[displayTeachers[focusedCell.rowIdx].id]?.[dIdx]?.[hIdx] || [];
         currentVal = cellClasses[0] || "";
       } else {
         currentVal = classSchedule[classes[focusedCell.rowIdx]]?.[dIdx]?.[hIdx] || "";
@@ -569,10 +596,18 @@ export default function App() {
               <button
                 onClick={() => { setViewMode('teacher'); setFocusedCell(null); setIsEditing(false); setSearchQuery(''); }}
                 className={`flex items-center gap-2 px-2.5 xl:px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${viewMode === 'teacher' ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/50'}`}
-                title="Προβολή ανά Εκπαιδευτικό"
+                title="Προβολή Ανά Εκπαιδευτικό (Γραμμικά)"
               >
                 <Users className="w-4 h-4" />
-                <span className="hidden lg:inline">Ανά Εκπαιδευτικό</span>
+                <span className="hidden lg:inline">Εκπαιδευτικοί (Γραμμικά)</span>
+              </button>
+              <button
+                onClick={() => { setViewMode('teacher-grid'); setFocusedCell(null); setIsEditing(false); setSearchQuery(''); }}
+                className={`flex items-center gap-2 px-2.5 xl:px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${viewMode === 'teacher-grid' ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/50'}`}
+                title="Προβολή Ανά Εκπαιδευτικό (Πλέγμα)"
+              >
+                <Users className="w-4 h-4" />
+                <span className="hidden lg:inline">Εκπαιδευτικοί (Πλέγμα)</span>
               </button>
               <button
                 onClick={() => { setViewMode('class-horizontal'); setFocusedCell(null); setIsEditing(false); setSearchQuery(''); }}
@@ -599,7 +634,7 @@ export default function App() {
             <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
             <input 
               type="text" 
-              placeholder={viewMode === 'teacher' ? 'Αναζήτηση Εκπαιδευτικού...' : 'Αναζήτηση Τμήματος...'}
+              placeholder={['teacher', 'teacher-grid'].includes(viewMode) ? 'Αναζήτηση Εκπαιδευτικού...' : 'Αναζήτηση Τμήματος...'}
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
               className="pl-9 pr-8 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white w-40 sm:w-48 xl:w-64 transition-all placeholder:text-slate-400"
@@ -656,10 +691,10 @@ export default function App() {
       </header>
 
       <main className="flex-1 bg-slate-50 relative flex flex-col overflow-hidden">
-        <div className={`p-6 w-full flex-1 flex flex-col min-w-0 ${viewMode === 'class-grid' ? 'overflow-auto' : 'overflow-hidden'}`}>
-          {viewMode === 'class-grid' ? (
-            <div className="flex gap-8 items-start w-max pb-12">
-            {Object.entries(classesByGrade).map(([grade, gradeClasses]) => {
+        <div className={`p-6 w-full flex-1 flex flex-col min-w-0 ${['class-grid', 'teacher-grid'].includes(viewMode) ? 'overflow-auto' : 'overflow-hidden'}`}>
+          {['class-grid', 'teacher-grid'].includes(viewMode) ? (
+            <div className={viewMode === 'class-grid' ? "flex gap-8 items-start w-max pb-12" : "grid grid-cols-1 xl:grid-cols-2 2xl:grid-cols-3 gap-8 pb-12 items-start"}>
+            {viewMode === 'class-grid' ? ( Object.entries(classesByGrade).map(([grade, gradeClasses]) => {
               const filteredClasses = gradeClasses.filter(cls => normalizeGreek(cls).includes(normalizeGreek(searchQuery)));
               if (filteredClasses.length === 0) return null;
               
@@ -764,7 +799,79 @@ export default function App() {
                 })}
               </div>
             );
-          })}
+          })) : (
+            displayTeachers.filter(t => normalizeGreek(t.name).includes(normalizeGreek(searchQuery))).map((teacher) => {
+              const rowIdx = displayTeachers.findIndex(t => t.id === teacher.id);
+              const tSchedule = schedule[teacher.id] || {};
+              let currentHours = 0;
+              for (let d = 0; d < 5; d++) {
+                if (tSchedule[d]) currentHours += Object.keys(tSchedule[d]).length;
+              }
+              const isOverHours = teacher.maxHours > 0 && currentHours > teacher.maxHours;
+              const hoursDisplay = teacher.maxHours === 0 ? currentHours : `${currentHours}/${teacher.maxHours}`;
+              return (
+                <div key={teacher.id} className="bg-white border border-slate-200 rounded-lg shadow-sm w-max relative shrink-0">
+                  <div className="px-4 py-2 font-bold text-center border-b border-slate-200 rounded-t-lg bg-slate-100 text-slate-700 flex justify-between items-center gap-4">
+                    <span className="truncate max-w-[12rem]">{teacher.name}</span>
+                    <span className={`text-xs px-1.5 py-0.5 rounded flex-shrink-0 ${isOverHours ? 'bg-red-100 text-red-700' : 'bg-white border border-slate-200'}`}>{hoursDisplay}</span>
+                  </div>
+                  <table className="border-collapse text-sm">
+                    <thead><tr><th className="w-12 h-10 border-b border-r border-slate-200 bg-slate-50 text-slate-500 font-normal">Ώρα</th>
+                    {DAYS.map(d => <th key={d} className="w-24 h-10 border-b border-r last:border-r-0 border-slate-200 bg-slate-50 text-slate-700 p-1 font-semibold">{d.substring(0,3)}</th>)}
+                    </tr></thead>
+                    <tbody>
+                      {[...Array(8)].map((_, hIdx) => (
+                        <tr key={hIdx}>
+                          <td className="border-r border-b border-slate-200 bg-slate-50 text-center text-xs text-slate-500 font-medium h-12">{hIdx + 1}η</td>
+                          {[...Array(5)].map((_, dIdx) => {
+                            const cIdx = hIdx * 5 + dIdx;
+                            const cellClasses = tSchedule[dIdx]?.[hIdx] || [];
+                            const val = cellClasses[0] || "";
+                            const clsColor = val ? getClassColor(val) : "";
+                            const isFocused = focusedCell?.rowIdx === rowIdx && focusedCell?.cIdx === cIdx;
+                            return (
+                              <td key={dIdx} className="p-0 relative h-12 border-b border-r last:border-r-0 border-slate-200 bg-white">
+                                <div
+                                  id={`cell-${rowIdx}-${cIdx}`}
+                                  tabIndex={-1}
+                                  draggable={!!val}
+                                  onDragStart={(e) => e.dataTransfer.setData('application/json', JSON.stringify({ type: 'class', val }))}
+                                  onDragOver={(e) => e.preventDefault()}
+                                  onDrop={(e) => {
+                                    e.preventDefault();
+                                    try { const data = JSON.parse(e.dataTransfer.getData('application/json')); if (data.type === 'class' && data.val) updateCell(teacher.id, dIdx, hIdx, data.val); } catch (err) {}
+                                  }}
+                                  onClick={(e) => { e.stopPropagation(); handleCellClick(rowIdx, cIdx, val); }}
+                                  className={`w-full h-full px-1 flex items-center justify-center text-xs text-center cursor-pointer outline-none select-none transition-colors
+                                    ${isFocused && !isEditing ? 'ring-2 ring-inset ring-blue-500 z-10 bg-blue-50' : ''}
+                                    ${!isFocused && val ? `${clsColor} font-bold` : 'text-slate-500 hover:bg-slate-50'}`}
+                                >
+                                  <span className="line-clamp-2 leading-tight">{val}</span>
+                                </div>
+                                {isFocused && isEditing && (
+                                  <div ref={editContainerRef} className="absolute top-full left-0 mt-1 bg-white border border-slate-300 shadow-xl rounded-md z-50 w-48 max-h-64 overflow-y-auto">
+                                    {sortedOptions.map((optVal, idx) => (
+                                      <div key={idx} id={`edit-opt-${idx}`} className={`px-3 py-2 text-sm cursor-pointer border-b border-slate-100 last:border-0 ${editIndex === idx ? 'bg-blue-600 text-white font-medium sticky top-0 bottom-0' : 'hover:bg-slate-50 text-slate-700'}`}
+                                        onClick={(e) => {
+                                          e.stopPropagation(); updateCell(teacher.id, dIdx, hIdx, optVal); setIsEditing(false); document.getElementById(`cell-${rowIdx}-${cIdx}`)?.focus();
+                                        }}
+                                      >
+                                        {getOptionLabel(optVal) || <span className="text-slate-400 italic">Κενό</span>}
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                              </td>
+                            );
+                          })}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              );
+            })
+          )}
           </div>
         ) : (
         <div className="bg-white rounded-xl shadow-sm border border-slate-200 relative flex-1 flex flex-col overflow-hidden w-full">
@@ -773,7 +880,7 @@ export default function App() {
               <thead>
                 <tr>
                   <th className="sticky top-0 left-0 z-40 h-10 bg-slate-100 border-b border-b-slate-300 border-r-2 border-r-slate-400 p-2 w-64 min-w-[16rem] text-left shadow-[1px_1px_0_0_#cbd5e1]">
-                    {viewMode === 'teacher' ? 'Εκπαιδευτικός' : 'Τμήμα'}
+                    {['teacher', 'teacher-grid'].includes(viewMode) ? 'Εκπαιδευτικός' : 'Τμήμα'}
                   </th>
                   {DAYS.map((day, dIdx) => (
                     <th key={dIdx} colSpan={8} className="sticky top-0 z-30 h-10 bg-slate-100 border-b border-b-slate-300 border-r-2 border-r-slate-400 p-2 text-center font-semibold text-slate-700">
@@ -784,7 +891,7 @@ export default function App() {
                 <tr>
                   <th className="sticky top-10 left-0 z-40 h-10 bg-slate-100 border-b border-b-slate-300 border-r-2 border-r-slate-400 p-2 text-left shadow-[1px_1px_0_0_#cbd5e1]">
                     <span className="text-xs text-slate-500 font-normal">
-                      {viewMode === 'teacher' ? 'Όνομα (Ωρ.)' : 'Όνομα Τμήματος'}
+                      {['teacher', 'teacher-grid'].includes(viewMode) ? 'Όνομα (Ωρ.)' : 'Όνομα Τμήματος'}
                     </span>
                   </th>
                   {DAYS.map((_, dIdx) => (
@@ -802,10 +909,10 @@ export default function App() {
                 </tr>
               </thead>
               <tbody>
-                {viewMode === 'teacher' ? (
+                {['teacher', 'teacher-grid'].includes(viewMode) ? (
                   /* --- TEACHER VIEW --- */
-                  teachers.filter(t => normalizeGreek(t.name).includes(normalizeGreek(searchQuery))).map((teacher) => {
-                    const rowIdx = teachers.findIndex(t => t.id === teacher.id);
+                  displayTeachers.filter(t => normalizeGreek(t.name).includes(normalizeGreek(searchQuery))).map((teacher) => {
+                    const rowIdx = displayTeachers.findIndex(t => t.id === teacher.id);
                     const tSchedule = schedule[teacher.id] || {};
                     let currentHours = 0;
                     for (let d = 0; d < 5; d++) {
@@ -1068,7 +1175,7 @@ export default function App() {
               <div>
                 <p className="text-xs text-slate-400 font-medium tracking-wider mb-1">ΕΚΔΟΣΗ</p>
                 {/* Version Number - Update this manually when deploying new versions */}
-                <span className="inline-block px-3 py-1 bg-blue-50 text-blue-700 rounded-full font-bold text-sm">v.0.92b.20260903</span>
+                <span className="inline-block px-3 py-1 bg-blue-50 text-blue-700 rounded-full font-bold text-sm">v.0.93b.20260903</span>
               </div>
             </div>
           </div>
