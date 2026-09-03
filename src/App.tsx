@@ -126,6 +126,7 @@ export default function App() {
   };
 
   // Keyboard nav state
+  const [conflictPending, setConflictPending] = useState<{type: 'class' | 'teacher'; day: number; hour: number; teacherId: string; classId: string; conflictClasses?: string[]; conflictTeacherId?: string;} | null>(null);
   const [focusedCell, setFocusedCell] = useState<{rowIdx: number, cIdx: number} | null>(null);
   const [isEditing, setIsEditing] = useState(false);
   const [editIndex, setEditIndex] = useState(0);
@@ -197,6 +198,24 @@ export default function App() {
   }, [handleUndo]);
 
   const updateCell = (teacherId: string, day: number, hour: number, classId: string) => {
+    if (!classId) {
+      executeCellUpdate(teacherId, day, hour, classId, 'move');
+      return;
+    }
+    if (!isVirtualTeacher(teacherId)) {
+      const busyClasses = schedule[teacherId]?.[day]?.[hour] || [];
+      const actualBusy = busyClasses.filter(c => c !== classId);
+      if (actualBusy.length > 0) {
+        setConflictPending({
+          type: 'teacher', day, hour, teacherId, classId, conflictClasses: actualBusy
+        });
+        return;
+      }
+    }
+    executeCellUpdate(teacherId, day, hour, classId, 'move');
+  };
+
+  const executeCellUpdate = (teacherId: string, day: number, hour: number, classId: string, mode: 'move' | 'coteach' = 'move') => {
     const teacher = teachers.find(t => t.id === teacherId);
     const teacherName = teacher ? teacher.name : teacherId;
     const description = classId === "" 
@@ -216,21 +235,49 @@ export default function App() {
       if (classId === "") {
          delete newState[teacherId][day][hour];
       } else {
-         const teacher = teachers.find(t => t.id === teacherId);
-         const isSpecial = (teacher && teacher.maxHours === 0) || teacherId === "ΑΓΓΛΙΚΑ" || teacherId === "Β' ΞΕΝΗ ΓΛΩΣΣΑ";
+         const isVirtual = isVirtualTeacher(teacherId);
+         const isCrossClassGroup = teacherId === "ΑΓΓΛΙΚΑ" || teacherId === "Β' ΞΕΝΗ ΓΛΩΣΣΑ";
          
          const getPrefix = (c: string) => c.match(/^[^\d]+/)?.[0] || c;
-         const classesToAssign = isSpecial 
+         const classesToAssign = isCrossClassGroup 
             ? classes.filter(c => getPrefix(c) === getPrefix(classId))
             : [classId];
 
-         newState[teacherId][day][hour] = classesToAssign;
+         if (mode === 'coteach' || isVirtual) {
+             const existing = newState[teacherId][day][hour] || [];
+             newState[teacherId][day][hour] = Array.from(new Set([...existing, ...classesToAssign]));
+         } else {
+             newState[teacherId][day][hour] = classesToAssign;
+         }
       }
       return newState;
     });
   };
 
+  const isVirtualTeacher = (tId: string) => {
+    const t = teachers.find(x => x.id === tId);
+    return (t && t.maxHours === 0) || tId === "ΑΓΓΛΙΚΑ" || tId === "Β' ΞΕΝΗ ΓΛΩΣΣΑ" || tId === "ΠΛΗΡΟΦΟΡΙΚΗ";
+  };
+
   const updateClassCell = (classId: string, day: number, hour: number, newTeacherId: string) => {
+    if (!newTeacherId) {
+      executeClassCellUpdate(classId, day, hour, newTeacherId, 'move');
+      return;
+    }
+    if (!isVirtualTeacher(newTeacherId)) {
+      const busyClasses = schedule[newTeacherId]?.[day]?.[hour] || [];
+      const actualBusy = busyClasses.filter(c => c !== classId);
+      if (actualBusy.length > 0) {
+        setConflictPending({
+          type: 'class', day, hour, teacherId: newTeacherId, classId, conflictClasses: actualBusy
+        });
+        return;
+      }
+    }
+    executeClassCellUpdate(classId, day, hour, newTeacherId, 'move');
+  };
+
+  const executeClassCellUpdate = (classId: string, day: number, hour: number, newTeacherId: string, mode: 'move' | 'coteach' = 'move') => {
     const teacher = teachers.find(t => t.id === newTeacherId);
     const teacherName = teacher ? teacher.name : newTeacherId;
     const description = newTeacherId === ""
@@ -245,10 +292,20 @@ export default function App() {
     setSchedule(prev => {
       const newState = JSON.parse(JSON.stringify(prev));
       
+      const getPrefixLocal = (c: string) => c.match(/^[^\d]+/)?.[0] || c;
+      
       // Remove any teacher currently assigned to this class at this day/hour
       Object.keys(newState).forEach(tId => {
-         if (newState[tId]?.[day]?.[hour]) {
-            newState[tId][day][hour] = newState[tId][day][hour].filter(c => c !== classId);
+         if (newState[tId]?.[day]?.[hour] && newState[tId][day][hour].includes(classId)) {
+            const isCrossClassGroupRemove = tId === "ΑΓΓΛΙΚΑ" || tId === "Β' ΞΕΝΗ ΓΛΩΣΣΑ";
+            
+            if (isCrossClassGroupRemove) {
+                const sisterClasses = classes.filter(c => getPrefixLocal(c) === getPrefixLocal(classId));
+                newState[tId][day][hour] = newState[tId][day][hour].filter(c => !sisterClasses.includes(c));
+            } else {
+                newState[tId][day][hour] = newState[tId][day][hour].filter(c => c !== classId);
+            }
+            
             if (newState[tId][day][hour].length === 0) {
                 delete newState[tId][day][hour];
             }
@@ -258,17 +315,18 @@ export default function App() {
       // Assign to new teacher
       if (newTeacherId) {
          const teacher = teachers.find(t => t.id === newTeacherId);
-         const isSpecial = (teacher && teacher.maxHours === 0) || newTeacherId === "ΑΓΓΛΙΚΑ" || newTeacherId === "Β' ΞΕΝΗ ΓΛΩΣΣΑ";
+         const isVirtual = isVirtualTeacher(newTeacherId);
+         const isCrossClassGroup = newTeacherId === "ΑΓΓΛΙΚΑ" || newTeacherId === "Β' ΞΕΝΗ ΓΛΩΣΣΑ";
          
          const getPrefix = (c: string) => c.match(/^[^\d]+/)?.[0] || c;
-         const classesToAssign = isSpecial 
+         const classesToAssign = isCrossClassGroup 
             ? classes.filter(c => getPrefix(c) === getPrefix(classId))
             : [classId];
 
          if (!newState[newTeacherId]) newState[newTeacherId] = {};
          if (!newState[newTeacherId][day]) newState[newTeacherId][day] = {};
          
-         if (isSpecial) {
+         if (isCrossClassGroup) {
              classesToAssign.forEach(sibClass => {
                  Object.keys(newState).forEach(tId => {
                      if (tId !== newTeacherId && newState[tId]?.[day]?.[hour]) {
@@ -279,7 +337,12 @@ export default function App() {
              });
          }
          
-         newState[newTeacherId][day][hour] = classesToAssign;
+         if (mode === 'coteach' || isVirtual) {
+             const existing = newState[newTeacherId][day][hour] || [];
+             newState[newTeacherId][day][hour] = Array.from(new Set([...existing, ...classesToAssign]));
+         } else {
+             newState[newTeacherId][day][hour] = classesToAssign;
+         }
       }
 
       return newState;
@@ -293,6 +356,27 @@ export default function App() {
     if (!classesByGrade[p]) classesByGrade[p] = [];
     classesByGrade[p].push(c);
   });
+
+  
+  const renderOptionContent = (optVal: string, d: number, h: number) => {
+    if (!optVal) return <span className="text-slate-400 italic">Κενό</span>;
+    const label = getOptionLabel(optVal);
+    
+    if (['class-grid', 'class-horizontal'].includes(viewMode)) {
+      if (!isVirtualTeacher(optVal)) {
+        const busyClasses = schedule[optVal]?.[d]?.[h] || [];
+        if (busyClasses.length > 0) {
+          return (
+            <div className="flex justify-between items-center text-slate-400">
+              <span className="truncate pr-2">{label}</span>
+              <span className="text-[10px] bg-slate-100 px-1 py-0.5 rounded truncate max-w-[80px]">στο {busyClasses.join(', ')}</span>
+            </div>
+          );
+        }
+      }
+    }
+    return <span>{label}</span>;
+  };
 
   const getOptionLabel = (val: string) => {
     if (!val) return "Κενό";
@@ -912,7 +996,7 @@ export default function App() {
                                               document.getElementById(`cell-${rowIdx}-${cIdx}`)?.focus();
                                             }}
                                           >
-                                            {getOptionLabel(optVal) || <span className="text-slate-400 italic">Κενό</span>}
+                                            {renderOptionContent(optVal, dIdx, hIdx)}
                                           </div>
                                         ))}
                                       </div>
@@ -986,7 +1070,7 @@ export default function App() {
                                           e.stopPropagation(); updateCell(teacher.id, dIdx, hIdx, optVal); setIsEditing(false); document.getElementById(`cell-${rowIdx}-${cIdx}`)?.focus();
                                         }}
                                       >
-                                        {getOptionLabel(optVal) || <span className="text-slate-400 italic">Κενό</span>}
+                                        {renderOptionContent(optVal, dIdx, hIdx)}
                                       </div>
                                     ))}
                                   </div>
@@ -1122,7 +1206,7 @@ export default function App() {
                                             document.getElementById(`cell-${rowIdx}-${cIdx}`)?.focus();
                                           }}
                                         >
-                                          {getOptionLabel(c) || <span className="text-slate-400 italic">Κενό</span>}
+                                          {renderOptionContent(c, dIdx, hIdx)}
                                         </div>
                                       ))}
                                     </div>
@@ -1206,7 +1290,7 @@ export default function App() {
                                             document.getElementById(`cell-${rowIdx}-${cIdx}`)?.focus();
                                           }}
                                         >
-                                          {getOptionLabel(optVal) || <span className="text-slate-400 italic">Κενό</span>}
+                                          {renderOptionContent(optVal, dIdx, hIdx)}
                                         </div>
                                       ))}
                                     </div>
@@ -1260,6 +1344,59 @@ export default function App() {
         )}
       </footer>
 
+      
+      {/* Conflict Modal */}
+      {conflictPending && (
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl shadow-2xl max-w-md w-full p-6 animate-in fade-in zoom-in-95 duration-200">
+            <h3 className="text-xl font-bold text-slate-900 mb-2 flex items-center gap-2">
+              <span className="text-amber-500">⚠️</span> Πιθανή Επικάλυψη
+            </h3>
+            <p className="text-slate-600 mb-6 text-sm">
+              Ο/Η εκπαιδευτικός <strong>{teachers.find(t => t.id === conflictPending.teacherId)?.name || conflictPending.teacherId}</strong> διδάσκει ήδη στο/στα τμήμα/τα <strong>{conflictPending.conflictClasses?.join(', ')}</strong> την {conflictPending.hour + 1}η ώρα της {DAYS[conflictPending.day]}. Τι θέλετε να κάνετε;
+            </p>
+            <div className="flex flex-col gap-3">
+              <button
+                onClick={() => {
+                  if (conflictPending.type === 'class') {
+                    executeClassCellUpdate(conflictPending.classId, conflictPending.day, conflictPending.hour, conflictPending.teacherId, 'move');
+                  } else {
+                    executeCellUpdate(conflictPending.teacherId, conflictPending.day, conflictPending.hour, conflictPending.classId, 'move');
+                  }
+                  setConflictPending(null);
+                }}
+                className="w-full text-left px-4 py-3 rounded-lg border border-blue-200 hover:border-blue-500 hover:bg-blue-50 transition-colors group"
+              >
+                <div className="font-semibold text-blue-700 group-hover:text-blue-800">Μετακίνηση (Προεπιλογή)</div>
+                <div className="text-xs text-blue-600/80 mt-1">Αφαίρεση από το παλιό τμήμα και προσθήκη στο νέο.</div>
+              </button>
+              
+              <button
+                onClick={() => {
+                  if (conflictPending.type === 'class') {
+                    executeClassCellUpdate(conflictPending.classId, conflictPending.day, conflictPending.hour, conflictPending.teacherId, 'coteach');
+                  } else {
+                    executeCellUpdate(conflictPending.teacherId, conflictPending.day, conflictPending.hour, conflictPending.classId, 'coteach');
+                  }
+                  setConflictPending(null);
+                }}
+                className="w-full text-left px-4 py-3 rounded-lg border border-purple-200 hover:border-purple-500 hover:bg-purple-50 transition-colors group"
+              >
+                <div className="font-semibold text-purple-700 group-hover:text-purple-800">Συνδιδασκαλία / Συνένωση</div>
+                <div className="text-xs text-purple-600/80 mt-1">Διατήρηση ΚΑΙ στο παλιό ΚΑΙ στο νέο τμήμα ταυτόχρονα.</div>
+              </button>
+
+              <button
+                onClick={() => setConflictPending(null)}
+                className="w-full mt-2 px-4 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium transition-colors text-center"
+              >
+                Ακύρωση
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* All Errors Modal */}
       {showErrorsModal && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[100] flex items-center justify-center p-4" onClick={() => setShowErrorsModal(false)}>
@@ -1306,7 +1443,7 @@ export default function App() {
               <div>
                 <p className="text-xs text-slate-400 font-medium tracking-wider mb-1">ΕΚΔΟΣΗ</p>
                 {/* Version Number - Update this manually when deploying new versions */}
-                <span className="inline-block px-3 py-1 bg-blue-50 text-blue-700 rounded-full font-bold text-sm">v.0.99b.20260903</span>
+                <span className="inline-block px-3 py-1 bg-blue-50 text-blue-700 rounded-full font-bold text-sm">v.1.1d.20260903</span>
               </div>
             </div>
           </div>
