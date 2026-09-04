@@ -55,6 +55,21 @@ export default function App() {
     return [];
   });
 
+  const [classTutors, setClassTutors] = useState<Record<string, string>>(() => {
+    try {
+      const saved = localStorage.getItem('school_class_tutors');
+      if (saved) return JSON.parse(saved);
+    } catch (e) {
+      console.error('Failed to load class tutors', e);
+    }
+    return {};
+  });
+
+  useEffect(() => {
+    localStorage.setItem('school_class_tutors', JSON.stringify(classTutors));
+  }, [classTutors]);
+
+
   const [subjectRules, setSubjectRules] = useState<SubjectRule[]>(() => {
     try {
       const saved = localStorage.getItem('school_subject_rules');
@@ -78,7 +93,8 @@ export default function App() {
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [showErrorsModal, setShowErrorsModal] = useState(false);
   const [viewMode, setViewMode] = useState<'teacher' | 'teacher-grid' | 'class-horizontal' | 'class-grid'>('teacher');
-  const [showInfoModal, setShowInfoModal] = useState(false);
+    const [showInfoModal, setShowInfoModal] = useState(false);
+  
   const [searchQuery, setSearchQuery] = useState('');
   const [history, setHistory] = useState<HistoryAction[]>([]);
   const [showHistoryDropdown, setShowHistoryDropdown] = useState(false);
@@ -675,6 +691,9 @@ export default function App() {
             if (data.subjectRules) {
               setSubjectRules(data.subjectRules);
             }
+            if (data.classTutors) {
+              setClassTutors(data.classTutors);
+            }
           }
         }
         setSchedule(data.schedule);
@@ -721,6 +740,131 @@ export default function App() {
     return false;
   }, [classSchedule, teachers]);
 
+
+  const renderClassCard = (cls: string) => {
+    const rowIdx = classes.indexOf(cls);
+    const cSchedule = classSchedule[cls] || {};
+    const clsColor = getClassColor(cls);
+    
+    let filledHours = 0;
+    for (let d = 0; d < 5; d++) {
+      for (let h = 0; h < 8; h++) {
+        if (cSchedule[d] && cSchedule[d][h]) {
+          filledHours++;
+        }
+      }
+    }
+    const isComplete = filledHours === 40;
+
+    return (
+      <div key={cls} className="bg-white border border-slate-200 rounded-lg shadow-sm w-max relative">
+        <div className={`px-3 py-2 flex items-center justify-between border-b border-slate-200 rounded-t-lg ${clsColor} gap-4`}>
+          <div className="flex items-center gap-2">
+             <span className="font-bold text-slate-800 text-sm">Τμήμα {cls}</span>
+             <select 
+                value={classTutors[cls] || ""} 
+                onChange={(e) => setClassTutors(prev => ({...prev, [cls]: e.target.value}))}
+                className="text-[11px] bg-white/60 border border-black/10 rounded-md px-1.5 py-0.5 text-slate-700 font-medium focus:outline-none focus:ring-1 focus:ring-black/20 hover:bg-white/80 cursor-pointer w-[120px] truncate shadow-sm transition-colors"
+                title="Ορισμός Υπευθύνου Τμήματος"
+             >
+                <option value="">👤 Ορισμός Υπευθύνου</option>
+                {teachers.map(t => (
+                  <option key={t.id} value={t.id}>{t.name}</option>
+                ))}
+             </select>
+          </div>
+          <div className={`text-[11px] font-bold px-2 py-0.5 rounded-full border shadow-sm flex items-center gap-1 ${isComplete ? 'bg-emerald-100 text-emerald-700 border-emerald-200' : (filledHours === 0 ? 'bg-slate-100 text-slate-500 border-slate-200' : 'bg-blue-100 text-blue-700 border-blue-200')}`} title={`Συμπληρωμένες Ώρες: ${filledHours} από 40`}>
+             {isComplete && <span>✨</span>} {filledHours}/40
+          </div>
+        </div>
+        <table className="border-collapse text-sm">
+          <thead>
+            <tr>
+              <th className="w-12 h-8 border-b border-r border-slate-200 bg-slate-50 text-slate-500 font-normal">Ώρα</th>
+              {DAYS.map(d => (
+                <th key={d} className="w-24 h-8 border-b border-r last:border-r-0 border-slate-200 bg-slate-50 text-slate-700 p-1 font-semibold">
+                  {d.substring(0,3)}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {[...Array(8)].map((_, hIdx) => (
+              <tr key={hIdx}>
+                <td className="border-r border-b border-slate-200 bg-slate-50 text-center text-xs text-slate-500 font-medium h-10">
+                  {hIdx + 1}η
+                </td>
+                {[...Array(5)].map((_, dIdx) => {
+                  const cIdx = hIdx * 5 + dIdx;
+                  const val = cSchedule[dIdx]?.[hIdx] || "";
+                  const teacherObj = teachers.find(t => t.id === val);
+                  const teacherName = formatCellText(val);
+                  const teacherColorClass = val ? getTeacherColor(val) : "";
+                  const isFocused = focusedCell?.rowIdx === rowIdx && focusedCell?.cIdx === cIdx;
+                  const isSearchMatch = searchQuery && val && (normalizeGreek(val).includes(normalizeGreek(searchQuery)) || (teacherObj && normalizeGreek(teacherObj.name).includes(normalizeGreek(searchQuery))));
+                  
+                  return (
+                    <td key={dIdx} className="p-0 relative h-10 border-b border-r last:border-r-0 border-slate-200 bg-white">
+                      <div
+                        id={`cell-${rowIdx}-${cIdx}`}
+                        tabIndex={-1}
+                        draggable={!!val}
+                        onDragStart={(e) => {
+                          e.dataTransfer.setData('application/json', JSON.stringify({ type: 'teacher', val }));
+                        }}
+                        onDragOver={(e) => e.preventDefault()}
+                        onDrop={(e) => {
+                          e.preventDefault();
+                          try {
+                            const data = JSON.parse(e.dataTransfer.getData('application/json'));
+                            if (data.type === 'teacher' && data.val) {
+                              updateClassCell(cls, dIdx, hIdx, data.val);
+                            }
+                          } catch (err) {}
+                        }}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleCellClick(rowIdx, cIdx, val);
+                        }}
+                        className={`w-full h-full px-1 flex items-center justify-center text-xs text-center cursor-pointer outline-none select-none transition-colors
+                          ${isFocused && !isEditing ? 'ring-2 ring-inset ring-blue-500 z-10 bg-blue-50' : ''}
+                          ${isSearchMatch && !isFocused ? 'ring-2 ring-inset ring-amber-400 bg-amber-100 z-10 font-bold text-amber-900' : (!isFocused && val ? `${teacherColorClass} font-medium` : 'text-slate-500 hover:bg-slate-50')}`}
+                      >
+                        <span className="line-clamp-2 leading-tight">{teacherName}</span>
+                      </div>
+                      
+                      {isFocused && isEditing && (
+                        <div 
+                           ref={editContainerRef}
+                          className="absolute top-full left-0 mt-1 bg-white border border-slate-300 shadow-xl rounded-md z-50 w-48 max-h-64 overflow-y-auto"
+                        >
+                          {sortedOptions.map((optVal, idx) => (
+                            <div 
+                               key={idx}
+                              id={`edit-opt-${idx}`}
+                              className={`px-3 py-2 text-sm cursor-pointer border-b border-slate-100 last:border-0 ${editIndex === idx ? 'bg-blue-600 text-white font-medium sticky top-0 bottom-0' : 'hover:bg-slate-50 text-slate-700'}`}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                updateClassCell(cls, dIdx, hIdx, optVal);
+                                setIsEditing(false);
+                                document.getElementById(`cell-${rowIdx}-${cIdx}`)?.focus();
+                              }}
+                            >
+                              {renderOptionContent(optVal, dIdx, hIdx)}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </td>
+                  );
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    );
+  };
   return (
     <div 
       className="h-screen bg-slate-50 font-sans text-slate-800 outline-none flex flex-col overflow-hidden"
@@ -894,7 +1038,7 @@ export default function App() {
             <Upload className="w-4 h-4" /> <span className="hidden xl:inline">Εισαγωγή</span>
           </button>
           <button 
-            onClick={() => exportToCSV(schedule, teachers, classes, subjectRules)}
+            onClick={() => exportToCSV(schedule, teachers, classes, subjectRules, classTutors)}
             className="flex items-center gap-2 p-2 xl:px-4 xl:py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md font-medium text-sm transition-colors shadow-sm shrink-0"
             title="Εξαγωγή"
           >
@@ -914,102 +1058,7 @@ export default function App() {
               return (
               <div key={grade} className="flex flex-col gap-4 shrink-0">
                 {filteredClasses.map(cls => {
-                  const rowIdx = classes.indexOf(cls);
-                  const cSchedule = classSchedule[cls] || {};
-                  const clsColor = getClassColor(cls);
-
-                  return (
-                    <div key={cls} className="bg-white border border-slate-200 rounded-lg shadow-sm w-max relative">
-                      <div className={`px-4 py-1.5 font-bold text-center border-b border-slate-200 rounded-t-lg ${clsColor}`}>
-                        Τμήμα {cls}
-                      </div>
-                      <table className="border-collapse text-sm">
-                        <thead>
-                          <tr>
-                            <th className="w-12 h-8 border-b border-r border-slate-200 bg-slate-50 text-slate-500 font-normal">Ώρα</th>
-                            {DAYS.map(d => (
-                              <th key={d} className="w-24 h-8 border-b border-r last:border-r-0 border-slate-200 bg-slate-50 text-slate-700 p-1 font-semibold">
-                                {d.substring(0,3)}
-                              </th>
-                            ))}
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {[...Array(8)].map((_, hIdx) => (
-                            <tr key={hIdx}>
-                              <td className="border-r border-b border-slate-200 bg-slate-50 text-center text-xs text-slate-500 font-medium h-10">
-                                {hIdx + 1}η
-                              </td>
-                              {[...Array(5)].map((_, dIdx) => {
-                                const cIdx = hIdx * 5 + dIdx;
-                                const val = cSchedule[dIdx]?.[hIdx] || "";
-                                const teacherObj = teachers.find(t => t.id === val);
-                                const teacherName = formatCellText(val);
-                                const teacherColorClass = val ? getTeacherColor(val) : "";
-                                const isFocused = focusedCell?.rowIdx === rowIdx && focusedCell?.cIdx === cIdx;
-                                const isSearchMatch = searchQuery && val && (normalizeGreek(val).includes(normalizeGreek(searchQuery)) || (teacherObj && normalizeGreek(teacherObj.name).includes(normalizeGreek(searchQuery))));
-                                
-                                return (
-                                  <td key={dIdx} className="p-0 relative h-10 border-b border-r last:border-r-0 border-slate-200 bg-white">
-                                    <div
-                                      id={`cell-${rowIdx}-${cIdx}`}
-                                      tabIndex={-1}
-                                      draggable={!!val}
-                                      onDragStart={(e) => {
-                                        e.dataTransfer.setData('application/json', JSON.stringify({ type: 'teacher', val }));
-                                      }}
-                                      onDragOver={(e) => e.preventDefault()}
-                                      onDrop={(e) => {
-                                        e.preventDefault();
-                                        try {
-                                          const data = JSON.parse(e.dataTransfer.getData('application/json'));
-                                          if (data.type === 'teacher' && data.val) {
-                                            updateClassCell(cls, dIdx, hIdx, data.val);
-                                          }
-                                        } catch (err) {}
-                                      }}
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        handleCellClick(rowIdx, cIdx, val);
-                                      }}
-                                      className={`w-full h-full px-1 flex items-center justify-center text-xs text-center cursor-pointer outline-none select-none transition-colors
-                                        ${isFocused && !isEditing ? 'ring-2 ring-inset ring-blue-500 z-10 bg-blue-50' : ''}
-                                        ${isSearchMatch && !isFocused ? 'ring-2 ring-inset ring-amber-400 bg-amber-100 z-10 font-bold text-amber-900' : (!isFocused && val ? `${teacherColorClass} font-medium` : 'text-slate-500 hover:bg-slate-50')}`}
-                                    >
-                                      <span className="line-clamp-2 leading-tight">{teacherName}</span>
-                                    </div>
-                                    
-                                    {isFocused && isEditing && (
-                                      <div 
-                                        ref={editContainerRef}
-                                        className="absolute top-full left-0 mt-1 bg-white border border-slate-300 shadow-xl rounded-md z-50 w-48 max-h-64 overflow-y-auto"
-                                      >
-                                        {sortedOptions.map((optVal, idx) => (
-                                          <div 
-                                            key={idx}
-                                            id={`edit-opt-${idx}`}
-                                            className={`px-3 py-2 text-sm cursor-pointer border-b border-slate-100 last:border-0 ${editIndex === idx ? 'bg-blue-600 text-white font-medium sticky top-0 bottom-0' : 'hover:bg-slate-50 text-slate-700'}`}
-                                            onClick={(e) => {
-                                              e.stopPropagation();
-                                              updateClassCell(cls, dIdx, hIdx, optVal);
-                                              setIsEditing(false);
-                                              document.getElementById(`cell-${rowIdx}-${cIdx}`)?.focus();
-                                            }}
-                                          >
-                                            {renderOptionContent(optVal, dIdx, hIdx)}
-                                          </div>
-                                        ))}
-                                      </div>
-                                    )}
-                                  </td>
-                                );
-                              })}
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  );
+                  return renderClassCard(cls);
                 })}
               </div>
             );
@@ -1443,7 +1492,7 @@ export default function App() {
               <div>
                 <p className="text-xs text-slate-400 font-medium tracking-wider mb-1">ΕΚΔΟΣΗ</p>
                 {/* Version Number - Update this manually when deploying new versions */}
-                <span className="inline-block px-3 py-1 bg-blue-50 text-blue-700 rounded-full font-bold text-sm">v.1.1e.20260903</span>
+                <span className="inline-block px-3 py-1 bg-blue-50 text-blue-700 rounded-full font-bold text-sm">v.1.1i.20260904</span>
               </div>
             </div>
           </div>

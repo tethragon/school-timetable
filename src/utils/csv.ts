@@ -1,6 +1,6 @@
 import { ScheduleData, Teacher, SubjectRule } from '../types';
 
-export function exportToCSV(schedule: ScheduleData, teachers: Teacher[], classes: string[], subjectRules: SubjectRule[]) {
+export function exportToCSV(schedule: ScheduleData, teachers: Teacher[], classes: string[], subjectRules: SubjectRule[], classTutors: Record<string, string> = {}) {
     const header = ['Εκπαιδευτικός', 'Max Ώρες'];
     const DAYS = ['Δευτέρα', 'Τρίτη', 'Τετάρτη', 'Πέμπτη', 'Παρασκευή'];
     for (let d = 0; d < 5; d++) {
@@ -40,6 +40,9 @@ export function exportToCSV(schedule: ScheduleData, teachers: Teacher[], classes
     subjectRules.forEach(r => {
         rows.push(`SUBJECT_RULE,"${r.id}","${r.name}",${r.maxHours.join(',')},"${r.abbreviation || ''}"`);
     });
+    Object.entries(classTutors).forEach(([cls, tId]) => {
+        if (tId) rows.push(`CLASS_TUTOR,"${cls}","${tId}"`);
+    });
 
     // Add BOM for Excel/Calc greek characters support
     const blob = new Blob(['\uFEFF' + rows.join('\n')], { type: 'text/csv;charset=utf-8;' });
@@ -69,7 +72,7 @@ export function parseCSVRow(str: string): string[] {
     return result.map(s => s.replace(/^"|"$/g, '').trim());
 }
 
-export function importFromCSV(file: File, currentTeachers: Teacher[]): Promise<{ schedule: ScheduleData, teachers?: Teacher[], classes?: string[], subjectRules?: SubjectRule[] }> {
+export function importFromCSV(file: File, currentTeachers: Teacher[]): Promise<{ schedule: ScheduleData, teachers?: Teacher[], classes?: string[], subjectRules?: SubjectRule[], classTutors?: Record<string, string> }> {
     return new Promise((resolve, reject) => {
         const reader = new FileReader();
         reader.onload = (e) => {
@@ -80,6 +83,7 @@ export function importFromCSV(file: File, currentTeachers: Teacher[]): Promise<{
                 let loadedTeachers: Teacher[] = [];
                 let loadedClasses: string[] = [];
                 let loadedSubjectRules: SubjectRule[] = [];
+                let loadedClassTutors: Record<string, string> = {};
                 let hasSystemData = false;
 
                 // Pass 1: Find system data
@@ -105,6 +109,8 @@ export function importFromCSV(file: File, currentTeachers: Teacher[]): Promise<{
                                 maxHours: cols.slice(3, 9).map(n => parseInt(n, 10) || 0),
                                 abbreviation: cols[9] || undefined
                             });
+                        } else if (cols[0] === 'CLASS_TUTOR' && cols.length >= 3) {
+                            loadedClassTutors[cols[1]] = cols[2];
                         }
                     }
                 }
@@ -144,7 +150,8 @@ export function importFromCSV(file: File, currentTeachers: Teacher[]): Promise<{
                     schedule: newSchedule,
                     teachers: hasSystemData ? loadedTeachers : undefined,
                     classes: hasSystemData ? loadedClasses : undefined,
-                    subjectRules: hasSystemData && loadedSubjectRules.length > 0 ? loadedSubjectRules : undefined
+                    subjectRules: hasSystemData && loadedSubjectRules.length > 0 ? loadedSubjectRules : undefined,
+                    classTutors: hasSystemData && Object.keys(loadedClassTutors).length > 0 ? loadedClassTutors : undefined
                 });
             } catch (err) {
                 reject(err);
