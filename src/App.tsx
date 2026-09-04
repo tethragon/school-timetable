@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { AlertCircle, CheckCircle2, Download, Upload, List, X, Users, BookOpen, Printer, Settings, Search, Undo2, ChevronDown } from 'lucide-react';
+import { AlertCircle, LayoutGrid, LayoutTemplate, CheckCircle2, Download, Upload, List, X, Users, BookOpen, Printer, Settings, Search, Undo2, ChevronDown } from 'lucide-react';
 import { useValidation } from './hooks/useValidation';
 import { ScheduleData, Teacher, SubjectRule, DEFAULT_SUBJECT_RULES, HistoryAction } from './types';
 import { exportToCSV, importFromCSV } from './utils/csv';
@@ -92,7 +92,13 @@ export default function App() {
   
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [showErrorsModal, setShowErrorsModal] = useState(false);
-  const [viewMode, setViewMode] = useState<'teacher' | 'teacher-grid' | 'class-horizontal' | 'class-grid'>('teacher');
+  const [viewMode, setViewMode] = useState<'teacher' | 'teacher-grid' | 'class-horizontal' | 'class-grid'>(() => {
+    const saved = localStorage.getItem('school_view_mode');
+    if (saved && ['teacher', 'teacher-grid', 'class-horizontal', 'class-grid'].includes(saved)) {
+      return saved as 'teacher' | 'teacher-grid' | 'class-horizontal' | 'class-grid';
+    }
+    return 'teacher';
+  });
     const [showInfoModal, setShowInfoModal] = useState(false);
   
   const [searchQuery, setSearchQuery] = useState('');
@@ -107,6 +113,11 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem('school_classes', JSON.stringify(classes));
   }, [classes]);
+
+  useEffect(() => {
+    localStorage.setItem('school_view_mode', viewMode);
+  }, [viewMode]);
+
 
   useEffect(() => {
     localStorage.setItem('school_subject_rules', JSON.stringify(subjectRules));
@@ -876,60 +887,78 @@ export default function App() {
         }
       }}
     >
-      <header className="shrink-0 bg-white shadow-sm border-b border-slate-200 px-4 xl:px-6 py-3 xl:py-4 z-40 flex flex-wrap justify-between items-center relative gap-4">
-        <div className="flex flex-wrap items-center gap-3 xl:gap-6">
-          <div className="hidden lg:block">
-            <h1 className="text-lg xl:text-xl font-bold text-slate-900 leading-tight">Πρόγραμμα Σχολικής Μονάδας</h1>
-            <p className="text-xs xl:text-sm text-slate-500 mt-0.5">Διαμόρφωση εβδομαδιαίου προγράμματος</p>
-          </div>
+      <header className="shrink-0 bg-white shadow-sm border-b border-slate-200 px-4 py-2 z-40 flex items-center justify-between gap-4">
+        {/* Left Section: App Icon + Views */}
+        <div className="flex items-center gap-2">
+          {/* App Info Button */}
+          <button
+            onClick={() => setShowInfoModal(true)}
+            className="flex items-center justify-center p-2 bg-blue-50 hover:bg-blue-100 text-blue-600 rounded-md transition-colors shrink-0"
+            title="Πληροφορίες Προγράμματος"
+          >
+            <BookOpen className="w-5 h-5" />
+          </button>
           
-          <div className="flex flex-wrap items-center gap-2 xl:gap-3 lg:ml-2">
+          <div className="w-px h-6 bg-slate-200 mx-1"></div>
+          
+          {/* View Modes */}
+          <div className="flex bg-slate-100 p-1 rounded-lg border border-slate-200">
             <button
-              onClick={() => setShowSettingsModal(true)}
-              className="flex items-center gap-2 p-2 xl:px-4 xl:py-2 bg-slate-800 hover:bg-slate-900 text-white rounded-md font-medium text-sm transition-colors shadow-sm"
-              title="Ρυθμίσεις Σχολείου"
+              onClick={() => { setViewMode('teacher'); setFocusedCell(null); setIsEditing(false); setSearchQuery(''); }}
+              className={`p-1.5 rounded-md transition-colors ${viewMode === 'teacher' ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-500 hover:text-slate-900 hover:bg-slate-200/50'}`}
+              title="Εκπαιδευτικοί (Γραμμικά)"
             >
-              <Settings className="w-4 h-4" /> <span className="hidden xl:inline">Ρυθμίσεις Σχολείου</span>
+              <Users className="w-4 h-4" />
             </button>
-            <div className="hidden xl:block w-px h-6 bg-slate-200 mx-1"></div>
-            <div className="flex bg-slate-100 p-1 rounded-lg border border-slate-200">
-              <button
-                onClick={() => { setViewMode('teacher'); setFocusedCell(null); setIsEditing(false); setSearchQuery(''); }}
-                className={`flex items-center gap-2 px-2.5 xl:px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${viewMode === 'teacher' ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/50'}`}
-                title="Προβολή Ανά Εκπαιδευτικό (Γραμμικά)"
-              >
-                <Users className="w-4 h-4" />
-                <span className="hidden lg:inline">Εκπαιδευτικοί (Γραμμικά)</span>
-              </button>
-              <button
-                onClick={() => { setViewMode('teacher-grid'); setFocusedCell(null); setIsEditing(false); setSearchQuery(''); }}
-                className={`flex items-center gap-2 px-2.5 xl:px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${viewMode === 'teacher-grid' ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/50'}`}
-                title="Προβολή Ανά Εκπαιδευτικό (Πλέγμα)"
-              >
-                <Users className="w-4 h-4" />
-                <span className="hidden lg:inline">Εκπαιδευτικοί (Πλέγμα)</span>
-              </button>
-              <button
-                onClick={() => { setViewMode('class-horizontal'); setFocusedCell(null); setIsEditing(false); setSearchQuery(''); }}
-                className={`flex items-center gap-2 px-2.5 xl:px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${viewMode === 'class-horizontal' ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/50'}`}
-                title="Προβολή Τμημάτων (Γραμμικά)"
-              >
-                <List className="w-4 h-4" />
-                <span className="hidden lg:inline">Τμήματα (Γραμμικά)</span>
-              </button>
-              <button
-                onClick={() => { setViewMode('class-grid'); setFocusedCell(null); setIsEditing(false); setSearchQuery(''); }}
-                className={`flex items-center gap-2 px-2.5 xl:px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${viewMode === 'class-grid' ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/50'}`}
-                title="Προβολή Τμημάτων (Πλέγμα)"
-              >
-                <BookOpen className="w-4 h-4" />
-                <span className="hidden lg:inline">Τμήματα (Πλέγμα)</span>
-              </button>
-            </div>
+            <button
+              onClick={() => { setViewMode('teacher-grid'); setFocusedCell(null); setIsEditing(false); setSearchQuery(''); }}
+              className={`p-1.5 rounded-md transition-colors ${viewMode === 'teacher-grid' ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-500 hover:text-slate-900 hover:bg-slate-200/50'}`}
+              title="Εκπαιδευτικοί (Πλέγμα)"
+            >
+              <LayoutGrid className="w-4 h-4" />
+            </button>
+            <button
+              onClick={() => { setViewMode('class-horizontal'); setFocusedCell(null); setIsEditing(false); setSearchQuery(''); }}
+              className={`p-1.5 rounded-md transition-colors ${viewMode === 'class-horizontal' ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-500 hover:text-slate-900 hover:bg-slate-200/50'}`}
+              title="Τμήματα (Γραμμικά)"
+            >
+              <List className="w-4 h-4" />
+            </button>
+            <button
+              onClick={() => { setViewMode('class-grid'); setFocusedCell(null); setIsEditing(false); setSearchQuery(''); }}
+              className={`p-1.5 rounded-md transition-colors ${viewMode === 'class-grid' ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-500 hover:text-slate-900 hover:bg-slate-200/50'}`}
+              title="Τμήματα (Πλέγμα)"
+            >
+              <LayoutTemplate className="w-4 h-4" />
+            </button>
           </div>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2 xl:gap-3">
+        {/* Center Section: Search */}
+        <div className="flex-1 flex justify-center max-w-md mx-auto">
+          <div className="relative w-full">
+            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input 
+              type="text" 
+              placeholder={['teacher', 'teacher-grid'].includes(viewMode) ? 'Αναζήτηση Εκπαιδευτικού...' : 'Αναζήτηση τμήματος, εκπαιδευτικού...'}
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+              onFocus={() => setFocusedCell(null)}
+              className="pl-9 pr-8 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white w-full transition-all placeholder:text-slate-400"
+            />
+            {searchQuery && (
+              <button 
+                onClick={() => setSearchQuery('')} 
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-1"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Right Section: Tools */}
+        <div className="flex items-center gap-2">
           {/* Undo Action Bar */}
           <div className="flex items-center bg-slate-100 rounded-lg border border-slate-200 p-1 relative">
             <button
@@ -954,7 +983,7 @@ export default function App() {
 
             {showHistoryDropdown && history.length > 0 && (
               <div 
-                className="absolute top-full left-0 mt-1 w-64 bg-white border border-slate-200 shadow-lg rounded-lg overflow-hidden z-50"
+                className="absolute top-full right-0 mt-1 w-64 bg-white border border-slate-200 shadow-lg rounded-lg overflow-hidden z-50"
                 onMouseLeave={() => setShowHistoryDropdown(false)}
               >
                 <div className="px-3 py-2 bg-slate-50 border-b border-slate-100 font-semibold text-xs text-slate-500 uppercase tracking-wider">
@@ -986,43 +1015,24 @@ export default function App() {
             )}
           </div>
 
-          <div className="relative">
-            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-            <input 
-              type="text" 
-              placeholder={['teacher', 'teacher-grid'].includes(viewMode) ? 'Αναζήτηση Εκπαιδευτικού...' : 'Αναζήτηση τμήματος, εκπαιδευτικού...'}
-              value={searchQuery}
-              onChange={e => setSearchQuery(e.target.value)}
-              onFocus={() => setFocusedCell(null)}
-              className="pl-9 pr-8 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white w-40 sm:w-48 xl:w-64 transition-all placeholder:text-slate-400"
-            />
-            {searchQuery && (
-              <button 
-                onClick={() => setSearchQuery('')} 
-                className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-1"
-              >
-                <X className="w-3.5 h-3.5" />
-              </button>
-            )}
-          </div>
-          
+          <div className="w-px h-6 bg-slate-200 mx-1"></div>
+
           <button
-            onClick={() => setShowInfoModal(true)}
-            className="flex items-center justify-center p-2 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-md transition-colors shrink-0"
-            title="Πληροφορίες Προγράμματος"
+            onClick={() => setShowSettingsModal(true)}
+            className="p-2 bg-slate-800 hover:bg-slate-900 text-white rounded-md transition-colors shadow-sm shrink-0"
+            title="Ρυθμίσεις Σχολείου"
           >
-            <BookOpen className="w-5 h-5" />
+            <Settings className="w-4 h-4" />
           </button>
           
-          <div className="hidden xl:block w-px h-6 bg-slate-200 mx-1"></div>
-
           <button 
             onClick={() => window.print()}
-            className="flex items-center gap-2 p-2 xl:px-4 xl:py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-md font-medium text-sm transition-colors shadow-sm shrink-0"
+            className="p-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-md transition-colors shadow-sm shrink-0"
             title="Εκτύπωση"
           >
-            <Printer className="w-4 h-4" /> <span className="hidden 2xl:inline">Εκτύπωση</span>
+            <Printer className="w-4 h-4" />
           </button>
+          
           <input 
             type="file" 
             accept=".csv" 
@@ -1032,17 +1042,18 @@ export default function App() {
           />
           <button 
             onClick={() => fileInputRef.current?.click()}
-            className="flex items-center gap-2 p-2 xl:px-4 xl:py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-md font-medium text-sm transition-colors shrink-0"
-            title="Εισαγωγή"
+            className="p-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-md transition-colors shrink-0"
+            title="Εισαγωγή CSV"
           >
-            <Upload className="w-4 h-4" /> <span className="hidden xl:inline">Εισαγωγή</span>
+            <Upload className="w-4 h-4" />
           </button>
+          
           <button 
             onClick={() => exportToCSV(schedule, teachers, classes, subjectRules, classTutors)}
-            className="flex items-center gap-2 p-2 xl:px-4 xl:py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md font-medium text-sm transition-colors shadow-sm shrink-0"
-            title="Εξαγωγή"
+            className="p-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md transition-colors shadow-sm shrink-0"
+            title="Εξαγωγή CSV"
           >
-            <Download className="w-4 h-4" /> <span className="hidden xl:inline">Εξαγωγή</span>
+            <Download className="w-4 h-4" />
           </button>
         </div>
       </header>
@@ -1484,6 +1495,11 @@ export default function App() {
               </button>
             </div>
             <div className="p-6 space-y-4 text-center">
+              <div className="mb-4">
+                <h3 className="text-xl font-bold text-slate-900 leading-tight">Πρόγραμμα Σχολικής Μονάδας</h3>
+                <p className="text-sm text-slate-500 mt-1">Διαμόρφωση εβδομαδιαίου προγράμματος</p>
+              </div>
+              <div className="w-full h-px bg-slate-100 my-2"></div>
               <div>
                 <p className="text-xs text-slate-400 font-medium tracking-wider mb-1">PROGRAM ARCHITECT</p>
                 <p className="text-lg font-bold text-slate-800">George Petrakis</p>
@@ -1492,7 +1508,7 @@ export default function App() {
               <div>
                 <p className="text-xs text-slate-400 font-medium tracking-wider mb-1">ΕΚΔΟΣΗ</p>
                 {/* Version Number - Update this manually when deploying new versions */}
-                <span className="inline-block px-3 py-1 bg-blue-50 text-blue-700 rounded-full font-bold text-sm">v.1.1i.20260904</span>
+                <span className="inline-block px-3 py-1 bg-blue-50 text-blue-700 rounded-full font-bold text-sm">v.1.4.20260904</span>
               </div>
             </div>
           </div>
