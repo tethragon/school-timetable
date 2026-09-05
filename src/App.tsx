@@ -1257,7 +1257,9 @@ export default function App() {
               const tSchedule = schedule[teacher.id] || {};
               let currentHours = 0;
               for (let d = 0; d < 5; d++) {
-                if (tSchedule[d]) currentHours += Object.keys(tSchedule[d]).length;
+                if (tSchedule[d]) {
+                  currentHours += Object.values(tSchedule[d]).filter(classes => !classes.includes('BLOCK')).length;
+                }
               }
               const isOverHours = teacher.maxHours > 0 && currentHours > teacher.maxHours;
               const hoursDisplay = teacher.maxHours === 0 ? currentHours : `${currentHours}/${teacher.maxHours}`;
@@ -1397,7 +1399,7 @@ export default function App() {
                     let currentHours = 0;
                     for (let d = 0; d < 5; d++) {
                       if (tSchedule[d]) {
-                        currentHours += Object.keys(tSchedule[d]).length;
+                        currentHours += Object.values(tSchedule[d]).filter(classes => !classes.includes('BLOCK')).length;
                       }
                     }
                     const isOverHours = teacher.maxHours > 0 && currentHours > teacher.maxHours;
