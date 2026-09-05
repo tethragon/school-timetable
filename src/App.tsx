@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { AlertCircle, LayoutGrid, LayoutTemplate, CheckCircle2, Download, Upload, List, X, Users, BookOpen, Printer, Settings, Search, Undo2, ChevronDown } from 'lucide-react';
+import { AlertCircle, Lock, Unlock, LayoutGrid, LayoutTemplate, CheckCircle2, Download, Upload, List, X, Users, BookOpen, Printer, Settings, Search, Undo2, ChevronDown, Ban } from 'lucide-react';
 import { useValidation } from './hooks/useValidation';
 import { ScheduleData, Teacher, SubjectRule, DEFAULT_SUBJECT_RULES, HistoryAction } from './types';
 import { exportToCSV, importFromCSV } from './utils/csv';
@@ -103,6 +103,13 @@ export default function App() {
   
   const [searchQuery, setSearchQuery] = useState('');
   const [history, setHistory] = useState<HistoryAction[]>([]);
+  const [lockedAssignments, setLockedAssignments] = useState<Record<string, boolean>>(() => {
+    try {
+      const saved = localStorage.getItem('school_locked_assignments');
+      if (saved) return JSON.parse(saved);
+    } catch (e) {}
+    return {};
+  });
   const [showHistoryDropdown, setShowHistoryDropdown] = useState(false);
   
   // Auto-save to localStorage
@@ -117,6 +124,108 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem('school_view_mode', viewMode);
   }, [viewMode]);
+
+  useEffect(() => {
+    localStorage.setItem('school_locked_assignments', JSON.stringify(lockedAssignments));
+  }, [lockedAssignments]);
+  
+  
+  type SelectedCell = { r: number, c: number, tId: string, d: number, h: number, cId: string };
+  const [selectedCells, setSelectedCells] = useState<SelectedCell[]>([]);
+
+  const toggleCellSelection = (r: number, c: number, tId: string, d: number, h: number, cId: string) => {
+    setSelectedCells(prev => {
+      const exists = prev.some(cell => cell.r === r && cell.c === c);
+      if (exists) return prev.filter(cell => cell.r !== r || cell.c !== c);
+      return [...prev, { r, c, tId, d, h, cId }];
+    });
+  };
+
+  const blockSelected = () => {
+    const isTeacherView = ['teacher', 'teacher-grid'].includes(viewMode);
+    
+    setHistory(prev => {
+      const newHistory = [{ id: Date.now().toString(), description: `Μαζικός αποκλεισμός (${selectedCells.length} ώρες)`, oldSchedule: JSON.parse(JSON.stringify(schedule)) }, ...prev];
+      return newHistory.slice(0, 30);
+    });
+
+    setSchedule(prev => {
+      const newState = JSON.parse(JSON.stringify(prev));
+      const getPrefixLocal = (c) => c.match(/^[^d]+/)?.[0] || c;
+
+      selectedCells.forEach(cell => {
+         const d = cell.d;
+         const h = cell.h;
+         
+         if (isTeacherView) {
+            const tId = cell.tId;
+            const classId = "BLOCK";
+            if (!newState[tId]) newState[tId] = {};
+            if (!newState[tId][d]) newState[tId][d] = {};
+            newState[tId][d][h] = ["BLOCK"];
+         } else {
+            const classId = cell.cId;
+            const newTeacherId = "BLOCK";
+            
+            // Remove any teacher currently assigned
+            Object.keys(newState).forEach(t => {
+               if (newState[t]?.[d]?.[h] && newState[t][d][h].includes(classId)) {
+                  newState[t][d][h] = newState[t][d][h].filter(c => c !== classId);
+                  if (newState[t][d][h].length === 0) delete newState[t][d][h];
+               }
+            });
+
+            if (!newState[newTeacherId]) newState[newTeacherId] = {};
+            if (!newState[newTeacherId][d]) newState[newTeacherId][d] = {};
+            const existing = newState[newTeacherId][d][h] || [];
+            newState[newTeacherId][d][h] = Array.from(new Set([...existing, classId]));
+         }
+      });
+      return newState;
+    });
+    setSelectedCells([]);
+  };
+
+  const lockSelected = () => {
+    setLockedAssignments(prev => {
+      const next = { ...prev };
+      selectedCells.forEach(cell => {
+        next[`${cell.tId}-${cell.d}-${cell.h}-${cell.cId}`] = true;
+      });
+      return next;
+    });
+    setSelectedCells([]);
+  };
+
+  const unlockSelected = () => {
+    setLockedAssignments(prev => {
+      const next = { ...prev };
+      selectedCells.forEach(cell => {
+        delete next[`${cell.tId}-${cell.d}-${cell.h}-${cell.cId}`];
+      });
+      return next;
+    });
+    setSelectedCells([]);
+  };
+
+  useEffect(() => {
+    setSelectedCells([]);
+  }, [viewMode, searchQuery]);
+
+  const toggleLock = (teacherId: string, day: number, hour: number, classId: string) => {
+    setLockedAssignments(prev => {
+      const key = `${teacherId}-${day}-${hour}-${classId}`;
+      const next = { ...prev };
+      if (next[key]) delete next[key];
+      else next[key] = true;
+      return next;
+    });
+  };
+
+  const isLocked = (teacherId: string, day: number, hour: number, classId: string) => {
+    if (!teacherId || !classId) return false;
+    return lockedAssignments[`${teacherId}-${day}-${hour}-${classId}`] === true;
+  };
 
 
   useEffect(() => {
@@ -247,7 +356,7 @@ export default function App() {
     const teacherName = teacher ? teacher.name : teacherId;
     const description = classId === "" 
       ? `Διαγραφή μαθήματος - ${teacherName} (${DAYS[day]} ${hour + 1}η)`
-      : `Ανάθεση ${classId} στον/στην ${teacherName} (${DAYS[day]} ${hour + 1}η)`;
+      : classId === "BLOCK" ? `Αποκλεισμός ώρας - ${teacherName} (${DAYS[day]} ${hour + 1}η)` : `Ανάθεση ${classId} στον/στην ${teacherName} (${DAYS[day]} ${hour + 1}η)`;
     
     setHistory(prev => {
       const newHistory = [{ id: Date.now().toString() + Math.random(), description, oldSchedule: JSON.parse(JSON.stringify(schedule)) }, ...prev];
@@ -282,6 +391,7 @@ export default function App() {
   };
 
   const isVirtualTeacher = (tId: string) => {
+    if (tId === 'BLOCK') return true;
     const t = teachers.find(x => x.id === tId);
     return (t && t.maxHours === 0) || tId === "ΑΓΓΛΙΚΑ" || tId === "Β' ΞΕΝΗ ΓΛΩΣΣΑ" || tId === "ΠΛΗΡΟΦΟΡΙΚΗ";
   };
@@ -309,7 +419,7 @@ export default function App() {
     const teacherName = teacher ? teacher.name : newTeacherId;
     const description = newTeacherId === ""
       ? `Διαγραφή ώρας - ${classId} (${DAYS[day]} ${hour + 1}η)`
-      : `Ανάθεση ${teacherName} στο ${classId} (${DAYS[day]} ${hour + 1}η)`;
+      : newTeacherId === "BLOCK" ? `Αποκλεισμός ώρας - ${classId} (${DAYS[day]} ${hour + 1}η)` : `Ανάθεση ${teacherName} στο ${classId} (${DAYS[day]} ${hour + 1}η)`;
     
     setHistory(prev => {
       const newHistory = [{ id: Date.now().toString() + Math.random(), description, oldSchedule: JSON.parse(JSON.stringify(schedule)) }, ...prev];
@@ -387,6 +497,7 @@ export default function App() {
   
   const renderOptionContent = (optVal: string, d: number, h: number) => {
     if (!optVal) return <span className="text-slate-400 italic">Κενό</span>;
+    if (optVal === 'BLOCK') return <span className="text-red-500 font-semibold flex items-center gap-1.5"><Ban className="w-3.5 h-3.5"/> Αποκλεισμός (Χ)</span>;
     const label = getOptionLabel(optVal);
     
     if (['class-grid', 'class-horizontal'].includes(viewMode)) {
@@ -407,6 +518,7 @@ export default function App() {
 
   const getOptionLabel = (val: string) => {
     if (!val) return "Κενό";
+    if (val === 'BLOCK') return "Αποκλεισμός Ώρας (Χ)";
     if (['teacher', 'teacher-grid'].includes(viewMode)) return val; // it's a classId
     const t = teachers.find(x => x.id === val);
     return t ? t.name : val;
@@ -414,6 +526,7 @@ export default function App() {
 
   const formatCellText = (val: string) => {
     if (!val) return "";
+    if (val === 'BLOCK') return "Αποκλεισμός Ώρας (Χ)";
     
     // Check if it's a teacher
     const teacherObj = teachers.find(t => t.id === val);
@@ -445,7 +558,7 @@ export default function App() {
   };
 
   const sortedOptions = ['teacher', 'teacher-grid'].includes(viewMode)
-    ? ["", ...[...classes].sort((a, b) => a.localeCompare(b, 'el'))] 
+    ? ["", "BLOCK", ...[...classes].sort((a, b) => a.localeCompare(b, 'el'))] 
     : ["", ...displayTeachers.map(t => t.id)];
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -488,6 +601,26 @@ export default function App() {
     if (e.key === 'Delete' || e.key === 'Backspace') {
       e.preventDefault();
       let dIdx, hIdx;
+      if (['class-grid', 'teacher-grid'].includes(viewMode)) {
+        dIdx = focusedCell.cIdx % 5;
+        hIdx = Math.floor(focusedCell.cIdx / 5);
+      } else {
+        dIdx = Math.floor(focusedCell.cIdx / 8);
+        hIdx = focusedCell.cIdx % 8;
+      }
+      
+      // Check if locked
+      if (['teacher', 'teacher-grid'].includes(viewMode)) {
+        const tId = displayTeachers[focusedCell.rowIdx].id;
+        const currentClasses = schedule[tId]?.[dIdx]?.[hIdx] || [];
+        if (currentClasses.some(c => isLocked(tId, dIdx, hIdx, c))) return;
+      } else {
+        const cId = classes[focusedCell.rowIdx];
+        const val = classSchedule[cId]?.[dIdx]?.[hIdx];
+        if (val && isLocked(val, dIdx, hIdx, cId)) return;
+      }
+
+      let _dummy;
       if (['class-grid', 'teacher-grid'].includes(viewMode)) {
         dIdx = focusedCell.cIdx % 5;
         hIdx = Math.floor(focusedCell.cIdx / 5);
@@ -810,7 +943,8 @@ export default function App() {
                   const val = cSchedule[dIdx]?.[hIdx] || "";
                   const teacherObj = teachers.find(t => t.id === val);
                   const teacherName = formatCellText(val);
-                  const teacherColorClass = val ? getTeacherColor(val) : "";
+                  const isBlocked = val === 'BLOCK';
+                  const teacherColorClass = isBlocked ? "bg-slate-200 text-slate-400" : (val ? getTeacherColor(val) : "");
                   const isFocused = focusedCell?.rowIdx === rowIdx && focusedCell?.cIdx === cIdx;
                   const isSearchMatch = searchQuery && val && (normalizeGreek(val).includes(normalizeGreek(searchQuery)) || (teacherObj && normalizeGreek(teacherObj.name).includes(normalizeGreek(searchQuery))));
                   
@@ -819,12 +953,13 @@ export default function App() {
                       <div
                         id={`cell-${rowIdx}-${cIdx}`}
                         tabIndex={-1}
-                        draggable={!!val}
+                        draggable={!!val && val !== 'BLOCK' && !isLocked(val, dIdx, hIdx, cls)}
                         onDragStart={(e) => {
                           e.dataTransfer.setData('application/json', JSON.stringify({ type: 'teacher', val }));
                         }}
                         onDragOver={(e) => e.preventDefault()}
                         onDrop={(e) => {
+                          if (val === 'BLOCK' || (val && isLocked(val, dIdx, hIdx, cls))) return;
                           e.preventDefault();
                           try {
                             const data = JSON.parse(e.dataTransfer.getData('application/json'));
@@ -835,35 +970,60 @@ export default function App() {
                         }}
                         onClick={(e) => {
                           e.stopPropagation();
+                          if (e.ctrlKey || e.metaKey) {
+                            toggleCellSelection(rowIdx, cIdx, val || "", dIdx, hIdx, cls);
+                            return;
+                          }
+                          setSelectedCells([]);
                           handleCellClick(rowIdx, cIdx, val);
                         }}
                         className={`w-full h-full px-1 flex items-center justify-center text-xs text-center cursor-pointer outline-none select-none transition-colors
+                          ${selectedCells.some(sc => sc.r === rowIdx && sc.c === cIdx) ? '!ring-2 !ring-inset !ring-blue-600 !bg-blue-200 !text-blue-900 font-bold z-20' : ''}
                           ${isFocused && !isEditing ? 'ring-2 ring-inset ring-blue-500 z-10 bg-blue-50' : ''}
                           ${isSearchMatch && !isFocused ? 'ring-2 ring-inset ring-amber-400 bg-amber-100 z-10 font-bold text-amber-900' : (!isFocused && val ? `${teacherColorClass} font-medium` : 'text-slate-500 hover:bg-slate-50')}`}
                       >
-                        <span className="line-clamp-2 leading-tight">{teacherName}</span>
+                        <span className="line-clamp-2 leading-tight">{isBlocked ? <X className="w-5 h-5 opacity-50 mx-auto"/> : teacherName}</span>
+                        {val && isLocked(val, dIdx, hIdx, cls) && <Lock className="w-2.5 h-2.5 absolute bottom-0.5 right-0.5 text-slate-700/60" />}
                       </div>
                       
                       {isFocused && isEditing && (
                         <div 
                            ref={editContainerRef}
-                          className="absolute top-full left-0 mt-1 bg-white border border-slate-300 shadow-xl rounded-md z-50 w-48 max-h-64 overflow-y-auto"
+                          className="absolute top-full left-0 mt-1 bg-white border border-slate-300 shadow-xl rounded-md z-50 w-48 max-h-64 flex flex-col"
                         >
-                          {sortedOptions.map((optVal, idx) => (
-                            <div 
-                               key={idx}
-                              id={`edit-opt-${idx}`}
-                              className={`px-3 py-2 text-sm cursor-pointer border-b border-slate-100 last:border-0 ${editIndex === idx ? 'bg-blue-600 text-white font-medium sticky top-0 bottom-0' : 'hover:bg-slate-50 text-slate-700'}`}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                updateClassCell(cls, dIdx, hIdx, optVal);
-                                setIsEditing(false);
-                                document.getElementById(`cell-${rowIdx}-${cIdx}`)?.focus();
-                              }}
-                            >
-                              {renderOptionContent(optVal, dIdx, hIdx)}
+                          <div className="flex-1 overflow-y-auto">
+                            {val && isLocked(val, dIdx, hIdx, cls) ? (
+                              <div className="p-3 text-center text-slate-500 text-xs italic">
+                                Η ανάθεση είναι κλειδωμένη
+                              </div>
+                            ) : (
+                              sortedOptions.map((optVal, idx) => (
+                                <div 
+                                   key={idx}
+                                  id={`edit-opt-${idx}`}
+                                  className={`px-3 py-2 text-sm cursor-pointer border-b border-slate-100 last:border-0 ${editIndex === idx ? 'bg-blue-600 text-white font-medium sticky top-0 bottom-0' : 'hover:bg-slate-50 text-slate-700'}`}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    updateClassCell(cls, dIdx, hIdx, optVal);
+                                    setIsEditing(false);
+                                    document.getElementById(`cell-${rowIdx}-${cIdx}`)?.focus();
+                                  }}
+                                >
+                                  {renderOptionContent(optVal, dIdx, hIdx)}
+                                </div>
+                              ))
+                            )}
+                          </div>
+                          {val && (
+                            <div className="border-t border-slate-200">
+                              <button
+                                onClick={(e) => { e.stopPropagation(); toggleLock(val, dIdx, hIdx, cls); setIsEditing(false); document.getElementById(`cell-${rowIdx}-${cIdx}`)?.focus(); }}
+                                className="w-full px-3 py-2 flex items-center justify-center gap-2 text-sm font-medium hover:bg-slate-50 transition-colors text-slate-700"
+                              >
+                                {isLocked(val, dIdx, hIdx, cls) ? <><Unlock className="w-4 h-4"/> Ξεκλείδωμα Ώρας</> : <><Lock className="w-4 h-4"/> Κλείδωμα Ώρας</>}
+                              </button>
                             </div>
-                          ))}
+                          )}
                         </div>
                       )}
                     </td>
@@ -959,6 +1119,24 @@ export default function App() {
 
         {/* Right Section: Tools */}
         <div className="flex items-center gap-2">
+          {/* Multi-Select Action Bar */}
+          {selectedCells.length > 0 && (
+            <div className="flex items-center bg-blue-50 rounded-lg border border-blue-200 p-1 relative shadow-sm">
+              <span className="text-xs text-blue-800 font-semibold px-2">{selectedCells.length} επιλεγμένα</span>
+              <div className="w-px h-4 bg-blue-200 mx-1"></div>
+              {['teacher', 'teacher-grid'].includes(viewMode) && (
+                <>
+                  <button onClick={blockSelected} className="p-1.5 text-red-600 hover:bg-white rounded-md transition-colors" title="Αποκλεισμός επιλεγμένων (Χ)"><Ban className="w-4 h-4"/></button>
+                  <div className="w-px h-4 bg-blue-200 mx-1"></div>
+                </>
+              )}
+              <button onClick={lockSelected} className="p-1.5 text-blue-700 hover:bg-white rounded-md transition-colors" title="Κλείδωμα επιλεγμένων"><Lock className="w-4 h-4"/></button>
+              <button onClick={unlockSelected} className="p-1.5 text-blue-700 hover:bg-white rounded-md transition-colors" title="Ξεκλείδωμα επιλεγμένων"><Unlock className="w-4 h-4"/></button>
+              <div className="w-px h-4 bg-blue-200 mx-1"></div>
+              <button onClick={() => setSelectedCells([])} className="p-1.5 text-slate-400 hover:text-slate-600 rounded-md hover:bg-white"><X className="w-4 h-4"/></button>
+            </div>
+          )}
+
           {/* Undo Action Bar */}
           <div className="flex items-center bg-slate-100 rounded-lg border border-slate-200 p-1 relative">
             <button
@@ -1101,38 +1279,66 @@ export default function App() {
                             const cIdx = hIdx * 5 + dIdx;
                             const cellClasses = tSchedule[dIdx]?.[hIdx] || [];
                             const val = cellClasses[0] || "";
-                            const clsColor = val ? getClassColor(val) : "";
+                            const isBlocked = val === 'BLOCK';
+                            const clsColor = isBlocked ? "bg-slate-200 text-slate-400" : (val ? getClassColor(val) : "");
                             const isFocused = focusedCell?.rowIdx === rowIdx && focusedCell?.cIdx === cIdx;
                             return (
                               <td key={dIdx} className="p-0 relative h-10 border-b border-r last:border-r-0 border-slate-200 bg-white">
                                 <div
                                   id={`cell-${rowIdx}-${cIdx}`}
                                   tabIndex={-1}
-                                  draggable={!!val}
+                                  draggable={!!val && val !== 'BLOCK' && !isLocked(teacher.id, dIdx, hIdx, val)}
                                   onDragStart={(e) => e.dataTransfer.setData('application/json', JSON.stringify({ type: 'class', val }))}
                                   onDragOver={(e) => e.preventDefault()}
                                   onDrop={(e) => {
+                                    if (val === 'BLOCK' || (val && isLocked(teacher.id, dIdx, hIdx, val))) return;
                                     e.preventDefault();
                                     try { const data = JSON.parse(e.dataTransfer.getData('application/json')); if (data.type === 'class' && data.val) updateCell(teacher.id, dIdx, hIdx, data.val); } catch (err) {}
                                   }}
-                                  onClick={(e) => { e.stopPropagation(); handleCellClick(rowIdx, cIdx, val); }}
+                                  onClick={(e) => { 
+                                      e.stopPropagation();
+                                      if (e.ctrlKey || e.metaKey) {
+                                        toggleCellSelection(rowIdx, cIdx, teacher.id, dIdx, hIdx, val || "");
+                                        return;
+                                      }
+                                      setSelectedCells([]);
+                                      handleCellClick(rowIdx, cIdx, val); 
+                                  }}
                                   className={`w-full h-full px-1 flex items-center justify-center text-xs text-center cursor-pointer outline-none select-none transition-colors
+                                    ${selectedCells.some(sc => sc.r === rowIdx && sc.c === cIdx) ? '!ring-2 !ring-inset !ring-blue-600 !bg-blue-200 !text-blue-900 font-bold z-20' : ''}
                                     ${isFocused && !isEditing ? 'ring-2 ring-inset ring-blue-500 z-10 bg-blue-50' : ''}
                                     ${!isFocused && val ? `${clsColor} font-bold` : 'text-slate-500 hover:bg-slate-50'}`}
                                 >
-                                  <span className="line-clamp-2 leading-tight">{val}</span>
+                                  <span className="line-clamp-2 leading-tight">{isBlocked ? <X className="w-5 h-5 opacity-50 mx-auto"/> : val}</span>
+                                  {val && isLocked(teacher.id, dIdx, hIdx, val) && <Lock className="w-2.5 h-2.5 absolute bottom-0.5 right-0.5 text-slate-700/60" />}
                                 </div>
                                 {isFocused && isEditing && (
-                                  <div ref={editContainerRef} className="absolute top-full left-0 mt-1 bg-white border border-slate-300 shadow-xl rounded-md z-50 w-48 max-h-64 overflow-y-auto">
-                                    {sortedOptions.map((optVal, idx) => (
-                                      <div key={idx} id={`edit-opt-${idx}`} className={`px-3 py-2 text-sm cursor-pointer border-b border-slate-100 last:border-0 ${editIndex === idx ? 'bg-blue-600 text-white font-medium sticky top-0 bottom-0' : 'hover:bg-slate-50 text-slate-700'}`}
-                                        onClick={(e) => {
-                                          e.stopPropagation(); updateCell(teacher.id, dIdx, hIdx, optVal); setIsEditing(false); document.getElementById(`cell-${rowIdx}-${cIdx}`)?.focus();
-                                        }}
-                                      >
-                                        {renderOptionContent(optVal, dIdx, hIdx)}
+                                  <div ref={editContainerRef} className="absolute top-full left-0 mt-1 bg-white border border-slate-300 shadow-xl rounded-md z-50 w-48 max-h-64 flex flex-col">
+                                    <div className="flex-1 overflow-y-auto">
+                                      {val && isLocked(teacher.id, dIdx, hIdx, val) ? (
+                                        <div className="p-3 text-center text-slate-500 text-xs italic">Η ανάθεση είναι κλειδωμένη</div>
+                                      ) : (
+                                        sortedOptions.map((optVal, idx) => (
+                                          <div key={idx} id={`edit-opt-${idx}`} className={`px-3 py-2 text-sm cursor-pointer border-b border-slate-100 last:border-0 ${editIndex === idx ? 'bg-blue-600 text-white font-medium sticky top-0 bottom-0' : 'hover:bg-slate-50 text-slate-700'}`}
+                                            onClick={(e) => {
+                                              e.stopPropagation(); updateCell(teacher.id, dIdx, hIdx, optVal); setIsEditing(false); document.getElementById(`cell-${rowIdx}-${cIdx}`)?.focus();
+                                            }}
+                                          >
+                                            {renderOptionContent(optVal, dIdx, hIdx)}
+                                          </div>
+                                        ))
+                                      )}
+                                    </div>
+                                    {val && (
+                                      <div className="border-t border-slate-200">
+                                        <button
+                                          onClick={(e) => { e.stopPropagation(); toggleLock(teacher.id, dIdx, hIdx, val); setIsEditing(false); document.getElementById(`cell-${rowIdx}-${cIdx}`)?.focus(); }}
+                                          className="w-full px-3 py-2 flex items-center justify-center gap-2 text-sm font-medium hover:bg-slate-50 transition-colors text-slate-700"
+                                        >
+                                          {isLocked(teacher.id, dIdx, hIdx, val) ? <><Unlock className="w-4 h-4"/> Ξεκλείδωμα Ώρας</> : <><Lock className="w-4 h-4"/> Κλείδωμα Ώρας</>}
+                                        </button>
                                       </div>
-                                    ))}
+                                    )}
                                   </div>
                                 )}
                               </td>
@@ -1217,19 +1423,21 @@ export default function App() {
                               
                               const isFocused = focusedCell?.rowIdx === rowIdx && focusedCell?.cIdx === cIdx;
                               const isLastHour = hIdx === 7;
-                              const cellColorClass = firstClass ? getClassColor(firstClass) : 'text-slate-600';
+                              const isBlocked = firstClass === 'BLOCK';
+                              const cellColorClass = isBlocked ? 'bg-slate-200 text-slate-400' : (firstClass ? getClassColor(firstClass) : 'hover:bg-slate-100 text-slate-600');
                               
                               return (
                                 <td key={hIdx} className={`p-0 relative h-10 min-w-[60px] bg-white border-b border-b-slate-200 ${isLastHour ? 'border-r-2 border-r-slate-400' : 'border-r border-r-slate-200'}`}>
                                   <div
                                     id={`cell-${rowIdx}-${cIdx}`}
                                     tabIndex={-1}
-                                    draggable={!!firstClass}
+                                    draggable={!!firstClass && firstClass !== 'BLOCK' && !isLocked(teacher.id, dIdx, hIdx, firstClass)}
                                     onDragStart={(e) => {
                                       e.dataTransfer.setData('application/json', JSON.stringify({ type: 'class', val: firstClass }));
                                     }}
                                     onDragOver={(e) => e.preventDefault()}
                                     onDrop={(e) => {
+                                      if (firstClass === 'BLOCK' || (firstClass && isLocked(teacher.id, dIdx, hIdx, firstClass))) return;
                                       e.preventDefault();
                                       try {
                                         const data = JSON.parse(e.dataTransfer.getData('application/json'));
@@ -1240,35 +1448,57 @@ export default function App() {
                                     }}
                                     onClick={(e) => {
                                       e.stopPropagation();
+                                      if (e.ctrlKey || e.metaKey) {
+                                        toggleCellSelection(rowIdx, cIdx, teacher.id, dIdx, hIdx, firstClass || "");
+                                        return;
+                                      }
+                                      setSelectedCells([]);
                                       handleCellClick(rowIdx, cIdx, firstClass);
                                     }}
                                     className={`w-full h-full flex items-center justify-center text-sm cursor-pointer outline-none select-none transition-colors
+                                      ${selectedCells.some(sc => sc.r === rowIdx && sc.c === cIdx) ? '!ring-2 !ring-inset !ring-blue-600 !bg-blue-200 !text-blue-900 font-bold z-20' : ''}
                                       ${isFocused && !isEditing ? 'ring-2 ring-inset ring-blue-500 z-10' : ''}
-                                      ${val ? cellColorClass : 'hover:bg-slate-100'}`}
+                                      ${cellColorClass}`}
                                   >
-                                    <span className="font-medium text-xs line-clamp-2 leading-tight text-center px-0.5">{val}</span>
+                                    <span className="font-medium text-xs line-clamp-2 leading-tight text-center px-0.5">{isBlocked ? <X className="w-4 h-4 mx-auto opacity-50"/> : val}</span>
                                   </div>
                                   
                                   {isFocused && isEditing && (
                                     <div 
                                       ref={editContainerRef}
-                                      className="absolute top-full left-0 mt-1 bg-white border border-slate-300 shadow-xl rounded-md z-50 w-48 max-h-64 overflow-y-auto"
+                                      className="absolute top-full left-0 mt-1 bg-white border border-slate-300 shadow-xl rounded-md z-50 w-48 max-h-64 flex flex-col"
                                     >
-                                      {sortedOptions.map((c, idx) => (
-                                        <div 
-                                          key={idx}
-                                          id={`edit-opt-${idx}`}
-                                          className={`px-3 py-2 text-sm cursor-pointer border-b border-slate-100 last:border-0 ${editIndex === idx ? 'bg-blue-600 text-white font-medium sticky top-0 bottom-0' : 'hover:bg-slate-50 text-slate-700'}`}
-                                          onClick={(e) => {
-                                            e.stopPropagation();
-                                            updateCell(teacher.id, dIdx, hIdx, c);
-                                            setIsEditing(false);
-                                            document.getElementById(`cell-${rowIdx}-${cIdx}`)?.focus();
-                                          }}
-                                        >
-                                          {renderOptionContent(c, dIdx, hIdx)}
+                                      <div className="flex-1 overflow-y-auto">
+                                        {firstClass && isLocked(teacher.id, dIdx, hIdx, firstClass) ? (
+                                          <div className="p-3 text-center text-slate-500 text-xs italic">Η ανάθεση είναι κλειδωμένη</div>
+                                        ) : (
+                                          sortedOptions.map((c, idx) => (
+                                            <div 
+                                              key={idx}
+                                              id={`edit-opt-${idx}`}
+                                              className={`px-3 py-2 text-sm cursor-pointer border-b border-slate-100 last:border-0 ${editIndex === idx ? 'bg-blue-600 text-white font-medium sticky top-0 bottom-0' : 'hover:bg-slate-50 text-slate-700'}`}
+                                              onClick={(e) => {
+                                                e.stopPropagation();
+                                                updateCell(teacher.id, dIdx, hIdx, c);
+                                                setIsEditing(false);
+                                                document.getElementById(`cell-${rowIdx}-${cIdx}`)?.focus();
+                                              }}
+                                            >
+                                              {renderOptionContent(c, dIdx, hIdx)}
+                                            </div>
+                                          ))
+                                        )}
+                                      </div>
+                                      {firstClass && (
+                                        <div className="border-t border-slate-200">
+                                          <button
+                                            onClick={(e) => { e.stopPropagation(); toggleLock(teacher.id, dIdx, hIdx, firstClass); setIsEditing(false); document.getElementById(`cell-${rowIdx}-${cIdx}`)?.focus(); }}
+                                            className="w-full px-3 py-2 flex items-center justify-center gap-2 text-sm font-medium hover:bg-slate-50 transition-colors text-slate-700"
+                                          >
+                                            {isLocked(teacher.id, dIdx, hIdx, firstClass) ? <><Unlock className="w-4 h-4"/> Ξεκλείδωμα Ώρας</> : <><Lock className="w-4 h-4"/> Κλείδωμα Ώρας</>}
+                                          </button>
                                         </div>
-                                      ))}
+                                      )}
                                     </div>
                                   )}
                                 </td>
@@ -1298,7 +1528,8 @@ export default function App() {
                               const val = cSchedule[dIdx]?.[hIdx] || "";
                               const teacherObj = teachers.find(t => t.id === val);
                               const teacherName = formatCellText(val);
-                              const teacherColorClass = val ? getTeacherColor(val) : "";
+                              const isBlocked = val === 'BLOCK';
+                              const teacherColorClass = isBlocked ? "bg-slate-200 text-slate-400" : (val ? getTeacherColor(val) : "");
                               const isFocused = focusedCell?.rowIdx === rowIdx && focusedCell?.cIdx === cIdx;
                               const isLastHour = hIdx === 7;
                               const isSearchMatch = searchQuery && val && (normalizeGreek(val).includes(normalizeGreek(searchQuery)) || (teacherObj && normalizeGreek(teacherObj.name).includes(normalizeGreek(searchQuery))));
@@ -1308,12 +1539,13 @@ export default function App() {
                                   <div
                                     id={`cell-${rowIdx}-${cIdx}`}
                                     tabIndex={-1}
-                                    draggable={!!val}
-                                    onDragStart={(e) => {
-                                      e.dataTransfer.setData('application/json', JSON.stringify({ type: 'teacher', val }));
-                                    }}
-                                    onDragOver={(e) => e.preventDefault()}
-                                    onDrop={(e) => {
+                                    draggable={!!val && val !== 'BLOCK' && !isLocked(val, dIdx, hIdx, cls)}
+                        onDragStart={(e) => {
+                          e.dataTransfer.setData('application/json', JSON.stringify({ type: 'teacher', val }));
+                        }}
+                        onDragOver={(e) => e.preventDefault()}
+                        onDrop={(e) => {
+                          if (val === 'BLOCK' || (val && isLocked(val, dIdx, hIdx, cls))) return;
                                       e.preventDefault();
                                       try {
                                         const data = JSON.parse(e.dataTransfer.getData('application/json'));
@@ -1324,35 +1556,58 @@ export default function App() {
                                     }}
                                     onClick={(e) => {
                                       e.stopPropagation();
+                                      if (e.ctrlKey || e.metaKey) {
+                                        toggleCellSelection(rowIdx, cIdx, val || "", dIdx, hIdx, cls);
+                                        return;
+                                      }
+                                      setSelectedCells([]);
                                       handleCellClick(rowIdx, cIdx, val);
                                     }}
                                     className={`w-full h-full px-1 flex items-center justify-center text-xs text-center cursor-pointer outline-none select-none transition-colors
+                                      ${selectedCells.some(sc => sc.r === rowIdx && sc.c === cIdx) ? '!ring-2 !ring-inset !ring-blue-600 !bg-blue-200 !text-blue-900 font-bold z-20' : ''}
                                       ${isFocused && !isEditing ? 'ring-2 ring-inset ring-blue-500 z-10 bg-blue-50' : ''}
                                       ${isSearchMatch && !isFocused ? 'ring-2 ring-inset ring-amber-400 bg-amber-100 z-10 font-bold text-amber-900' : (!isFocused && val ? `${teacherColorClass} font-medium` : 'text-slate-500 hover:bg-slate-50')}`}
                                   >
-                                    <span className="line-clamp-2 leading-tight">{teacherName}</span>
-                                  </div>
+                                    <span className="line-clamp-2 leading-tight">{isBlocked ? <X className="w-5 h-5 opacity-50 mx-auto"/> : teacherName}</span>
+                        {val && isLocked(val, dIdx, hIdx, cls) && <Lock className="w-2.5 h-2.5 absolute bottom-0.5 right-0.5 text-slate-700/60" />}
+                      </div>
                                   
                                   {isFocused && isEditing && (
                                     <div 
                                       ref={editContainerRef}
-                                      className="absolute top-full left-0 mt-1 bg-white border border-slate-300 shadow-xl rounded-md z-50 w-48 max-h-64 overflow-y-auto"
+                                      className="absolute top-full left-0 mt-1 bg-white border border-slate-300 shadow-xl rounded-md z-50 w-48 max-h-64 flex flex-col"
                                     >
-                                      {sortedOptions.map((optVal, idx) => (
-                                        <div 
-                                          key={idx} 
-                                          id={`edit-opt-${idx}`}
-                                          className={`px-3 py-2 text-sm cursor-pointer border-b border-slate-100 last:border-0 ${editIndex === idx ? 'bg-blue-600 text-white font-medium sticky top-0 bottom-0' : 'hover:bg-slate-50 text-slate-700'}`}
-                                          onClick={(e) => {
-                                            e.stopPropagation();
-                                            updateClassCell(cls, dIdx, hIdx, optVal);
-                                            setIsEditing(false);
-                                            document.getElementById(`cell-${rowIdx}-${cIdx}`)?.focus();
-                                          }}
-                                        >
-                                          {renderOptionContent(optVal, dIdx, hIdx)}
+                                      <div className="flex-1 overflow-y-auto">
+                                        {val && isLocked(val, dIdx, hIdx, cls) ? (
+                                          <div className="p-3 text-center text-slate-500 text-xs italic">Η ανάθεση είναι κλειδωμένη</div>
+                                        ) : (
+                                          sortedOptions.map((optVal, idx) => (
+                                            <div 
+                                              key={idx} 
+                                              id={`edit-opt-${idx}`}
+                                              className={`px-3 py-2 text-sm cursor-pointer border-b border-slate-100 last:border-0 ${editIndex === idx ? 'bg-blue-600 text-white font-medium sticky top-0 bottom-0' : 'hover:bg-slate-50 text-slate-700'}`}
+                                              onClick={(e) => {
+                                                e.stopPropagation();
+                                                updateClassCell(cls, dIdx, hIdx, optVal);
+                                                setIsEditing(false);
+                                                document.getElementById(`cell-${rowIdx}-${cIdx}`)?.focus();
+                                              }}
+                                            >
+                                              {renderOptionContent(optVal, dIdx, hIdx)}
+                                            </div>
+                                          ))
+                                        )}
+                                      </div>
+                                      {val && (
+                                        <div className="border-t border-slate-200">
+                                          <button
+                                            onClick={(e) => { e.stopPropagation(); toggleLock(val, dIdx, hIdx, cls); setIsEditing(false); document.getElementById(`cell-${rowIdx}-${cIdx}`)?.focus(); }}
+                                            className="w-full px-3 py-2 flex items-center justify-center gap-2 text-sm font-medium hover:bg-slate-50 transition-colors text-slate-700"
+                                          >
+                                            {isLocked(val, dIdx, hIdx, cls) ? <><Unlock className="w-4 h-4"/> Ξεκλείδωμα Ώρας</> : <><Lock className="w-4 h-4"/> Κλείδωμα Ώρας</>}
+                                          </button>
                                         </div>
-                                      ))}
+                                      )}
                                     </div>
                                   )}
                                 </td>
@@ -1508,7 +1763,7 @@ export default function App() {
               <div>
                 <p className="text-xs text-slate-400 font-medium tracking-wider mb-1">ΕΚΔΟΣΗ</p>
                 {/* Version Number - Update this manually when deploying new versions */}
-                <span className="inline-block px-3 py-1 bg-blue-50 text-blue-700 rounded-full font-bold text-sm">v.1.4.20260904</span>
+                <span className="inline-block px-3 py-1 bg-blue-50 text-blue-700 rounded-full font-bold text-sm">v.1.6.20260905</span>
               </div>
             </div>
           </div>
