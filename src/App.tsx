@@ -382,7 +382,7 @@ export default function App() {
          const isCrossClassGroup = teacherId === "ΑΓΓΛΙΚΑ" || teacherId === "Β' ΞΕΝΗ ΓΛΩΣΣΑ";
          
          const getPrefix = (c: string) => c.match(/^[^\d]+/)?.[0] || c;
-         const classesToAssign = isCrossClassGroup 
+         const classesToAssign = (isCrossClassGroup && classId !== 'BLOCK')
             ? classes.filter(c => getPrefix(c) === getPrefix(classId))
             : [classId];
 
@@ -463,7 +463,7 @@ export default function App() {
          const isCrossClassGroup = newTeacherId === "ΑΓΓΛΙΚΑ" || newTeacherId === "Β' ΞΕΝΗ ΓΛΩΣΣΑ";
          
          const getPrefix = (c: string) => c.match(/^[^\d]+/)?.[0] || c;
-         const classesToAssign = isCrossClassGroup 
+         const classesToAssign = (isCrossClassGroup && classId !== 'BLOCK')
             ? classes.filter(c => getPrefix(c) === getPrefix(classId))
             : [classId];
 
@@ -1503,7 +1503,7 @@ export default function App() {
                                       ${isFocused && !isEditing ? 'ring-2 ring-inset ring-blue-500 z-10' : ''}
                                       ${cellColorClass}`}
                                   >
-                                    <span className="font-medium text-xs line-clamp-2 leading-tight text-center px-0.5">{isBlocked ? <X className="w-4 h-4 mx-auto opacity-50"/> : val}</span>
+                                    <span className="font-medium text-xs line-clamp-2 leading-tight text-center px-0.5">{isBlocked ? <X className="w-4 h-4 mx-auto opacity-50"/> : firstClass}</span>
                                   </div>
                                   
                                   {isFocused && isEditing && (
