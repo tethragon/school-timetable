@@ -130,6 +130,19 @@ export default function App() {
     localStorage.setItem('school_locked_assignments', JSON.stringify(lockedAssignments));
   }, [lockedAssignments]);
   
+  // Cross-tab synchronization
+  useEffect(() => {
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === 'school_schedule_auto_save' && e.newValue) setSchedule(JSON.parse(e.newValue));
+      if (e.key === 'school_teachers' && e.newValue) setTeachers(JSON.parse(e.newValue));
+      if (e.key === 'school_classes' && e.newValue) setClasses(JSON.parse(e.newValue));
+      if (e.key === 'school_class_tutors' && e.newValue) setClassTutors(JSON.parse(e.newValue));
+      if (e.key === 'school_subject_rules' && e.newValue) setSubjectRules(JSON.parse(e.newValue));
+      if (e.key === 'school_locked_assignments' && e.newValue) setLockedAssignments(JSON.parse(e.newValue));
+    };
+    window.addEventListener('storage', handleStorageChange);
+    return () => window.removeEventListener('storage', handleStorageChange);
+  }, []);
   
   type SelectedCell = { r: number, c: number, tId: string, d: number, h: number, cId: string };
   const [selectedCells, setSelectedCells] = useState<SelectedCell[]>([]);
