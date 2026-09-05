@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { AlertCircle, Lock, Unlock, LayoutGrid, LayoutTemplate, CheckCircle2, Download, Upload, List, X, Users, BookOpen, Printer, Settings, Search, Undo2, ChevronDown, Ban } from 'lucide-react';
+import { Star, AlertCircle, Lock, Unlock, LayoutGrid, LayoutTemplate, CheckCircle2, Download, Upload, List, X, Users, BookOpen, Printer, Settings, Search, Undo2, ChevronDown, Ban } from 'lucide-react';
 import { useValidation } from './hooks/useValidation';
 import { ScheduleData, Teacher, SubjectRule, DEFAULT_SUBJECT_RULES, HistoryAction } from './types';
 import { exportToCSV, importFromCSV } from './utils/csv';
@@ -265,6 +265,11 @@ export default function App() {
 
   // Keyboard nav state
   const [conflictPending, setConflictPending] = useState<{type: 'class' | 'teacher'; day: number; hour: number; teacherId: string; classId: string; conflictClasses?: string[]; conflictTeacherId?: string;} | null>(null);
+  const [dragConflict, setDragConflict] = useState<{
+    type: 'class' | 'teacher';
+    source: { id: string; day: number; hour: number; val: string };
+    target: { id: string; day: number; hour: number; val: string };
+  } | null>(null);
   const [focusedCell, setFocusedCell] = useState<{rowIdx: number, cIdx: number} | null>(null);
   const [isEditing, setIsEditing] = useState(false);
   const [editIndex, setEditIndex] = useState(0);
@@ -830,18 +835,32 @@ export default function App() {
     if (e.target.files && e.target.files.length > 0) {
       try {
         const data = await importFromCSV(e.target.files[0], teachers);
+        
+        const msg = (data.teachers && data.classes)
+          ? 'ΠΡΟΣΟΧΗ: Η φόρτωση θα αντικαταστήσει το τρέχον πρόγραμμα ΚΑΙ όλες τις ρυθμίσεις (Εκπαιδευτικοί, Τμήματα). Θέλετε να συνεχίσετε;'
+          : 'ΠΡΟΣΟΧΗ: Η φόρτωση θα αντικαταστήσει το τρέχον πρόγραμμα. Θέλετε να συνεχίσετε;';
+          
+        if (!window.confirm(msg)) {
+          if (fileInputRef.current) fileInputRef.current.value = "";
+          return;
+        }
+
+        // Apply new data (which will automatically overwrite local storage via useEffects)
         if (data.teachers && data.classes) {
-          if (window.confirm('Το αρχείο περιέχει Ρυθμίσεις Σχολείου. Θέλετε να αντικατασταθούν τα τρέχοντα δεδομένα (Εκπαιδευτικοί, Τμήματα, Κανόνες);')) {
-            setTeachers(data.teachers);
-            setClasses(data.classes);
-            if (data.subjectRules) {
-              setSubjectRules(data.subjectRules);
-            }
-            if (data.classTutors) {
-              setClassTutors(data.classTutors);
-            }
+          setTeachers(data.teachers);
+          setClasses(data.classes);
+          if (data.subjectRules) {
+            setSubjectRules(data.subjectRules);
+          } else {
+            setSubjectRules(DEFAULT_SUBJECT_RULES);
+          }
+          if (data.classTutors) {
+            setClassTutors(data.classTutors);
+          } else {
+            setClassTutors({});
           }
         }
+        
         setSchedule(data.schedule);
         setHistory([]);
       } catch (err) {
@@ -946,7 +965,8 @@ export default function App() {
                   const teacherObj = teachers.find(t => t.id === val);
                   const teacherName = formatCellText(val);
                   const isBlocked = val === 'BLOCK';
-                  const teacherColorClass = isBlocked ? "bg-slate-200 text-slate-400" : (val ? getTeacherColor(val) : "");
+                  const isTutor = classTutors[cls] === val && val !== '';
+                  const teacherColorClass = isBlocked ? "bg-slate-200 text-slate-400" : (val ? (isTutor ? "bg-yellow-300 text-yellow-950 font-bold border-l-4 border-yellow-500 shadow-inner" : getTeacherColor(val)) : "");
                   const isFocused = focusedCell?.rowIdx === rowIdx && focusedCell?.cIdx === cIdx;
                   const isSearchMatch = searchQuery && val && (normalizeGreek(val).includes(normalizeGreek(searchQuery)) || (teacherObj && normalizeGreek(teacherObj.name).includes(normalizeGreek(searchQuery))));
                   
@@ -957,7 +977,7 @@ export default function App() {
                         tabIndex={-1}
                         draggable={!!val && val !== 'BLOCK' && !isLocked(val, dIdx, hIdx, cls)}
                         onDragStart={(e) => {
-                          e.dataTransfer.setData('application/json', JSON.stringify({ type: 'teacher', val }));
+                          e.dataTransfer.setData('application/json', JSON.stringify({ type: 'teacher', val, source: { id: cls, day: dIdx, hour: hIdx, val } }));
                         }}
                         onDragOver={(e) => e.preventDefault()}
                         onDrop={(e) => {
@@ -966,7 +986,11 @@ export default function App() {
                           try {
                             const data = JSON.parse(e.dataTransfer.getData('application/json'));
                             if (data.type === 'teacher' && data.val) {
-                              updateClassCell(cls, dIdx, hIdx, data.val);
+                              if (val && val !== data.val && data.source) {
+                                setDragConflict({ type: 'teacher', source: data.source, target: { id: cls, day: dIdx, hour: hIdx, val } });
+                              } else {
+                                updateClassCell(cls, dIdx, hIdx, data.val);
+                              }
                             }
                           } catch (err) {}
                         }}
@@ -984,7 +1008,9 @@ export default function App() {
                           ${isFocused && !isEditing ? 'ring-2 ring-inset ring-blue-500 z-10 bg-blue-50' : ''}
                           ${isSearchMatch && !isFocused ? 'ring-2 ring-inset ring-amber-400 bg-amber-100 z-10 font-bold text-amber-900' : (!isFocused && val ? `${teacherColorClass} font-medium` : 'text-slate-500 hover:bg-slate-50')}`}
                       >
-                        <span className="line-clamp-2 leading-tight">{isBlocked ? <X className="w-5 h-5 opacity-50 mx-auto"/> : teacherName}</span>
+                        <span className="line-clamp-2 leading-tight">
+                          {isBlocked ? <X className="w-5 h-5 opacity-50 mx-auto"/> : teacherName}
+                        </span>
                         {val && isLocked(val, dIdx, hIdx, cls) && <Lock className="w-2.5 h-2.5 absolute bottom-0.5 right-0.5 text-slate-700/60" />}
                       </div>
                       
@@ -1292,12 +1318,21 @@ export default function App() {
                                   id={`cell-${rowIdx}-${cIdx}`}
                                   tabIndex={-1}
                                   draggable={!!val && val !== 'BLOCK' && !isLocked(teacher.id, dIdx, hIdx, val)}
-                                  onDragStart={(e) => e.dataTransfer.setData('application/json', JSON.stringify({ type: 'class', val }))}
+                                  onDragStart={(e) => e.dataTransfer.setData('application/json', JSON.stringify({ type: 'class', val, source: { id: teacher.id, day: dIdx, hour: hIdx, val } }))}
                                   onDragOver={(e) => e.preventDefault()}
                                   onDrop={(e) => {
                                     if (val === 'BLOCK' || (val && isLocked(teacher.id, dIdx, hIdx, val))) return;
                                     e.preventDefault();
-                                    try { const data = JSON.parse(e.dataTransfer.getData('application/json')); if (data.type === 'class' && data.val) updateCell(teacher.id, dIdx, hIdx, data.val); } catch (err) {}
+                                    try { 
+                                      const data = JSON.parse(e.dataTransfer.getData('application/json')); 
+                                      if (data.type === 'class' && data.val) {
+                                        if (val && val !== data.val && data.source) {
+                                          setDragConflict({ type: 'class', source: data.source, target: { id: teacher.id, day: dIdx, hour: hIdx, val } });
+                                        } else {
+                                          updateCell(teacher.id, dIdx, hIdx, data.val); 
+                                        }
+                                      }
+                                    } catch (err) {}
                                   }}
                                   onClick={(e) => { 
                                       e.stopPropagation();
@@ -1437,7 +1472,7 @@ export default function App() {
                                     tabIndex={-1}
                                     draggable={!!firstClass && firstClass !== 'BLOCK' && !isLocked(teacher.id, dIdx, hIdx, firstClass)}
                                     onDragStart={(e) => {
-                                      e.dataTransfer.setData('application/json', JSON.stringify({ type: 'class', val: firstClass }));
+                                      e.dataTransfer.setData('application/json', JSON.stringify({ type: 'class', val: firstClass, source: { id: teacher.id, day: dIdx, hour: hIdx, val: firstClass } }));
                                     }}
                                     onDragOver={(e) => e.preventDefault()}
                                     onDrop={(e) => {
@@ -1446,7 +1481,11 @@ export default function App() {
                                       try {
                                         const data = JSON.parse(e.dataTransfer.getData('application/json'));
                                         if (data.type === 'class' && data.val) {
-                                          updateCell(teacher.id, dIdx, hIdx, data.val);
+                                          if (firstClass && firstClass !== data.val && data.source) {
+                                            setDragConflict({ type: 'class', source: data.source, target: { id: teacher.id, day: dIdx, hour: hIdx, val: firstClass } });
+                                          } else {
+                                            updateCell(teacher.id, dIdx, hIdx, data.val);
+                                          }
                                         }
                                       } catch (err) {}
                                     }}
@@ -1533,7 +1572,8 @@ export default function App() {
                               const teacherObj = teachers.find(t => t.id === val);
                               const teacherName = formatCellText(val);
                               const isBlocked = val === 'BLOCK';
-                              const teacherColorClass = isBlocked ? "bg-slate-200 text-slate-400" : (val ? getTeacherColor(val) : "");
+                              const isTutor = classTutors[cls] === val && val !== '';
+                              const teacherColorClass = isBlocked ? "bg-slate-200 text-slate-400" : (val ? (isTutor ? "bg-yellow-300 text-yellow-950 font-bold border-l-4 border-yellow-500 shadow-inner" : getTeacherColor(val)) : "");
                               const isFocused = focusedCell?.rowIdx === rowIdx && focusedCell?.cIdx === cIdx;
                               const isLastHour = hIdx === 7;
                               const isSearchMatch = searchQuery && val && (normalizeGreek(val).includes(normalizeGreek(searchQuery)) || (teacherObj && normalizeGreek(teacherObj.name).includes(normalizeGreek(searchQuery))));
@@ -1545,7 +1585,7 @@ export default function App() {
                                     tabIndex={-1}
                                     draggable={!!val && val !== 'BLOCK' && !isLocked(val, dIdx, hIdx, cls)}
                         onDragStart={(e) => {
-                          e.dataTransfer.setData('application/json', JSON.stringify({ type: 'teacher', val }));
+                          e.dataTransfer.setData('application/json', JSON.stringify({ type: 'teacher', val, source: { id: cls, day: dIdx, hour: hIdx, val } }));
                         }}
                         onDragOver={(e) => e.preventDefault()}
                         onDrop={(e) => {
@@ -1554,7 +1594,11 @@ export default function App() {
                                       try {
                                         const data = JSON.parse(e.dataTransfer.getData('application/json'));
                                         if (data.type === 'teacher' && data.val) {
-                                          updateClassCell(cls, dIdx, hIdx, data.val);
+                                          if (val && val !== data.val && data.source) {
+                                            setDragConflict({ type: 'teacher', source: data.source, target: { id: cls, day: dIdx, hour: hIdx, val } });
+                                          } else {
+                                            updateClassCell(cls, dIdx, hIdx, data.val);
+                                          }
                                         }
                                       } catch (err) {}
                                     }}
@@ -1572,7 +1616,9 @@ export default function App() {
                                       ${isFocused && !isEditing ? 'ring-2 ring-inset ring-blue-500 z-10 bg-blue-50' : ''}
                                       ${isSearchMatch && !isFocused ? 'ring-2 ring-inset ring-amber-400 bg-amber-100 z-10 font-bold text-amber-900' : (!isFocused && val ? `${teacherColorClass} font-medium` : 'text-slate-500 hover:bg-slate-50')}`}
                                   >
-                                    <span className="line-clamp-2 leading-tight">{isBlocked ? <X className="w-5 h-5 opacity-50 mx-auto"/> : teacherName}</span>
+                                    <span className="line-clamp-2 leading-tight">
+                                      {isBlocked ? <X className="w-5 h-5 opacity-50 mx-auto"/> : teacherName}
+                                    </span>
                         {val && isLocked(val, dIdx, hIdx, cls) && <Lock className="w-2.5 h-2.5 absolute bottom-0.5 right-0.5 text-slate-700/60" />}
                       </div>
                                   
@@ -1715,6 +1761,70 @@ export default function App() {
           </div>
         </div>
       )}
+
+      {/* Drag Drop Conflict Modal */}
+      {dragConflict && (() => {
+        const dragSourceText = dragConflict.type === 'teacher' 
+          ? (teachers.find(t => t.id === dragConflict.source.val)?.name || dragConflict.source.val)
+          : dragConflict.source.val;
+        const dragTargetText = dragConflict.type === 'teacher'
+          ? (teachers.find(t => t.id === dragConflict.target.val)?.name || dragConflict.target.val)
+          : dragConflict.target.val;
+        return (
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl shadow-2xl max-w-md w-full p-6 animate-in fade-in zoom-in-95 duration-200">
+            <h3 className="text-xl font-bold text-slate-900 mb-2 flex items-center gap-2">
+              <span className="text-blue-500">ℹ️</span> Κατειλημμένο Κελί
+            </h3>
+            <p className="text-slate-600 mb-6 text-sm">
+              Το κελί προορισμού δεν είναι άδειο (περιέχει: <strong>{dragTargetText}</strong>). Τι θέλετε να κάνετε με τη νέα ανάθεση (<strong>{dragSourceText}</strong>);
+            </p>
+            <div className="flex flex-col gap-3">
+              <button
+                onClick={() => {
+                  if (dragConflict.type === 'class') {
+                    updateCell(dragConflict.target.id, dragConflict.target.day, dragConflict.target.hour, dragConflict.source.val);
+                  } else {
+                    updateClassCell(dragConflict.target.id, dragConflict.target.day, dragConflict.target.hour, dragConflict.source.val);
+                  }
+                  setDragConflict(null);
+                }}
+                className="w-full text-left px-4 py-3 rounded-lg border border-red-200 hover:border-red-500 hover:bg-red-50 transition-colors group"
+              >
+                <div className="font-semibold text-red-700 group-hover:text-red-800">Επικάλυψη / Αντικατάσταση</div>
+                <div className="text-xs text-red-600/80 mt-1">Η παλιά εγγραφή θα διαγραφεί και θα μπει η νέα.</div>
+              </button>
+              
+              <button
+                onClick={() => {
+                  if (dragConflict.type === 'class') {
+                    // Update target first
+                    updateCell(dragConflict.target.id, dragConflict.target.day, dragConflict.target.hour, dragConflict.source.val);
+                    // Update source
+                    updateCell(dragConflict.source.id, dragConflict.source.day, dragConflict.source.hour, dragConflict.target.val);
+                  } else {
+                    updateClassCell(dragConflict.target.id, dragConflict.target.day, dragConflict.target.hour, dragConflict.source.val);
+                    updateClassCell(dragConflict.source.id, dragConflict.source.day, dragConflict.source.hour, dragConflict.target.val);
+                  }
+                  setDragConflict(null);
+                }}
+                className="w-full text-left px-4 py-3 rounded-lg border border-emerald-200 hover:border-emerald-500 hover:bg-emerald-50 transition-colors group"
+              >
+                <div className="font-semibold text-emerald-700 group-hover:text-emerald-800">Αμοιβαία Αλλαγή (Αντιμετάθεση)</div>
+                <div className="text-xs text-emerald-600/80 mt-1">Οι δύο αναθέσεις θα αλλάξουν θέσεις μεταξύ τους.</div>
+              </button>
+
+              <button
+                onClick={() => setDragConflict(null)}
+                className="w-full mt-2 px-4 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium transition-colors text-center"
+              >
+                Ακύρωση
+              </button>
+            </div>
+          </div>
+        </div>
+        );
+      })()}
 
       {/* All Errors Modal */}
       {showErrorsModal && (
