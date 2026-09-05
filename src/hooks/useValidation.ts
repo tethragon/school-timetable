@@ -31,10 +31,11 @@ export function useValidation(schedule: ScheduleData, teachers: Teacher[], class
         // Κανόνας: Ένας εκπαιδευτικός δεν μπορεί να διδάσκει την ίδια ώρα σε διαφορετικά τμήματα (εξαιρούνται ειδικά μαθήματα με 0 ώρες)
         if (teacher.maxHours > 0) {
             Object.entries(daySchedule).forEach(([h, clsArr]) => {
-                if (clsArr.length > 1) {
+                const validClasses = clsArr.filter(c => c !== 'BLOCK');
+                if (validClasses.length > 1) {
                     errors.push({
                         id: `t-${teacher.id}-d-${d}-h-${h}-mult`,
-                        message: `${teacher.name}: Διδάσκει σε πολλαπλά τμήματα την ${DAYS[d]} (${Number(h) + 1}η ώρα): ${clsArr.join(', ')}`,
+                        message: `${teacher.name}: Διδάσκει σε πολλαπλά τμήματα την ${DAYS[d]} (${Number(h) + 1}η ώρα): ${validClasses.join(', ')}`,
                         type: 'error'
                     });
                 }
@@ -60,6 +61,7 @@ export function useValidation(schedule: ScheduleData, teachers: Teacher[], class
         teachers.forEach(t => {
           const clsArr = schedule[t.id]?.[d]?.[h] || [];
           clsArr.forEach(cls => {
+            if (cls === 'BLOCK') return;
             if (!classToTeachers[cls]) classToTeachers[cls] = [];
             classToTeachers[cls].push(t.name);
           });
@@ -70,6 +72,7 @@ export function useValidation(schedule: ScheduleData, teachers: Teacher[], class
           if (!teachers.some(t => t.id === sr.name)) {
             const clsArr = schedule[sr.name]?.[d]?.[h] || [];
             clsArr.forEach(cls => {
+              if (cls === 'BLOCK') return;
               if (!classToTeachers[cls]) classToTeachers[cls] = [];
               classToTeachers[cls].push(sr.name);
             });
