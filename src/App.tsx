@@ -8,21 +8,22 @@ import { SettingsModal } from './components/SettingsModal';
 const DAYS = ['Δευτέρα', 'Τρίτη', 'Τετάρτη', 'Πέμπτη', 'Παρασκευή'];
 
 const CLASS_COLORS = [
-  'bg-red-100 text-red-800 border-red-200 hover:bg-red-200/60',
-  'bg-blue-100 text-blue-800 border-blue-200 hover:bg-blue-200/60',
-  'bg-green-100 text-green-800 border-green-200 hover:bg-green-200/60',
-  'bg-amber-100 text-amber-800 border-amber-200 hover:bg-amber-200/60',
-  'bg-purple-100 text-purple-800 border-purple-200 hover:bg-purple-200/60',
-  'bg-pink-100 text-pink-800 border-pink-200 hover:bg-pink-200/60',
-  'bg-cyan-100 text-cyan-800 border-cyan-200 hover:bg-cyan-200/60',
-  'bg-emerald-100 text-emerald-800 border-emerald-200 hover:bg-emerald-200/60',
-  'bg-indigo-100 text-indigo-800 border-indigo-200 hover:bg-indigo-200/60',
-  'bg-orange-100 text-orange-800 border-orange-200 hover:bg-orange-200/60',
-  'bg-lime-100 text-lime-800 border-lime-200 hover:bg-lime-200/60',
-  'bg-fuchsia-100 text-fuchsia-800 border-fuchsia-200 hover:bg-fuchsia-200/60',
-  'bg-sky-100 text-sky-800 border-sky-200 hover:bg-sky-200/60',
-  'bg-rose-100 text-rose-800 border-rose-200 hover:bg-rose-200/60',
-  'bg-teal-100 text-teal-800 border-teal-200 hover:bg-teal-200/60'
+  'bg-red-50 text-red-900 border-l-4 border-l-red-500 hover:bg-red-100',
+  'bg-blue-50 text-blue-900 border-l-4 border-l-blue-500 hover:bg-blue-100',
+  'bg-emerald-50 text-emerald-900 border-l-4 border-l-emerald-500 hover:bg-emerald-100',
+  'bg-amber-50 text-amber-900 border-l-4 border-l-amber-500 hover:bg-amber-100',
+  'bg-purple-50 text-purple-900 border-l-4 border-l-purple-500 hover:bg-purple-100',
+  'bg-pink-50 text-pink-900 border-l-4 border-l-pink-500 hover:bg-pink-100',
+  'bg-cyan-50 text-cyan-900 border-l-4 border-l-cyan-500 hover:bg-cyan-100',
+  'bg-orange-50 text-orange-900 border-l-4 border-l-orange-500 hover:bg-orange-100',
+  'bg-indigo-50 text-indigo-900 border-l-4 border-l-indigo-500 hover:bg-indigo-100',
+  'bg-lime-50 text-lime-900 border-l-4 border-l-lime-500 hover:bg-lime-100',
+  'bg-fuchsia-50 text-fuchsia-900 border-l-4 border-l-fuchsia-500 hover:bg-fuchsia-100',
+  'bg-sky-50 text-sky-900 border-l-4 border-l-sky-500 hover:bg-sky-100',
+  'bg-rose-50 text-rose-900 border-l-4 border-l-rose-500 hover:bg-rose-100',
+  'bg-teal-50 text-teal-900 border-l-4 border-l-teal-500 hover:bg-teal-100',
+  'bg-violet-50 text-violet-900 border-l-4 border-l-violet-500 hover:bg-violet-100',
+  'bg-yellow-50 text-yellow-900 border-l-4 border-l-yellow-500 hover:bg-yellow-100'
 ];
 
 const normalizeGreek = (str: string) => {
@@ -151,6 +152,7 @@ export default function App() {
 
     setSchedule(prev => {
       const newState = JSON.parse(JSON.stringify(prev));
+
       const getPrefixLocal = (c) => c.match(/^[^d]+/)?.[0] || c;
 
       selectedCells.forEach(cell => {

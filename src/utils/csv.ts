@@ -150,8 +150,8 @@ export function importFromCSV(file: File, currentTeachers: Teacher[]): Promise<{
                     schedule: newSchedule,
                     teachers: hasSystemData ? loadedTeachers : undefined,
                     classes: hasSystemData ? loadedClasses : undefined,
-                    subjectRules: hasSystemData && loadedSubjectRules.length > 0 ? loadedSubjectRules : undefined,
-                    classTutors: hasSystemData && Object.keys(loadedClassTutors).length > 0 ? loadedClassTutors : undefined
+                    subjectRules: hasSystemData ? loadedSubjectRules : undefined,
+                    classTutors: hasSystemData ? loadedClassTutors : undefined
                 });
             } catch (err) {
                 reject(err);
