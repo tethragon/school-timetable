@@ -14,11 +14,13 @@ export function useValidation(schedule: ScheduleData, teachers: Teacher[], class
 
       for (let d = 0; d < 5; d++) {
         const daySchedule = tSchedule[d] || {};
-        const hoursAssigned = Object.keys(daySchedule).map(Number);
-        totalHours += hoursAssigned.length;
+        const validHours = Object.values(daySchedule).filter(clsArr => clsArr.length > 0 && !clsArr.includes('BLOCK'));
+        totalHours += validHours.length;
 
         // Κανόνας: Όχι 1η ώρα και 8η ώρα την ίδια μέρα
-        if (daySchedule[0] && daySchedule[7]) {
+        const isTeachingFirst = daySchedule[0] && daySchedule[0].some(c => c !== 'BLOCK');
+        const isTeachingEighth = daySchedule[7] && daySchedule[7].some(c => c !== 'BLOCK');
+        if (isTeachingFirst && isTeachingEighth) {
           errors.push({
             id: `t-${teacher.id}-d-${d}-gap`,
             message: `${teacher.name}: Διδάσκει 1η και 8η ώρα την ${DAYS[d]}`,

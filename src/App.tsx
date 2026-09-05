@@ -893,7 +893,7 @@ export default function App() {
     let filledHours = 0;
     for (let d = 0; d < 5; d++) {
       for (let h = 0; h < 8; h++) {
-        if (cSchedule[d] && cSchedule[d][h]) {
+        if (cSchedule[d] && cSchedule[d][h] && cSchedule[d][h] !== 'BLOCK') {
           filledHours++;
         }
       }
@@ -1258,7 +1258,7 @@ export default function App() {
               let currentHours = 0;
               for (let d = 0; d < 5; d++) {
                 if (tSchedule[d]) {
-                  currentHours += Object.values(tSchedule[d]).filter(classes => !classes.includes('BLOCK')).length;
+                  currentHours += Object.values(tSchedule[d]).filter(classes => classes.length > 0 && !classes.includes('BLOCK')).length;
                 }
               }
               const isOverHours = teacher.maxHours > 0 && currentHours > teacher.maxHours;
@@ -1399,7 +1399,7 @@ export default function App() {
                     let currentHours = 0;
                     for (let d = 0; d < 5; d++) {
                       if (tSchedule[d]) {
-                        currentHours += Object.values(tSchedule[d]).filter(classes => !classes.includes('BLOCK')).length;
+                        currentHours += Object.values(tSchedule[d]).filter(classes => classes.length > 0 && !classes.includes('BLOCK')).length;
                       }
                     }
                     const isOverHours = teacher.maxHours > 0 && currentHours > teacher.maxHours;
