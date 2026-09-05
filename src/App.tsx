@@ -103,6 +103,7 @@ export default function App() {
     const [showInfoModal, setShowInfoModal] = useState(false);
   
   const [searchQuery, setSearchQuery] = useState('');
+  const [searchTags, setSearchTags] = useState<string[]>([]);
   const [history, setHistory] = useState<HistoryAction[]>([]);
   const [lockedAssignments, setLockedAssignments] = useState<Record<string, boolean>>(() => {
     try {
@@ -897,7 +898,7 @@ export default function App() {
     }
   };
 
-  const doesClassMatchSearch = useCallback((cls: string, q: string) => {
+  const doesClassMatchItem = useCallback((cls: string, q: string) => {
     if (!q) return true;
     const normQ = normalizeGreek(q);
     if (normalizeGreek(cls).includes(normQ)) return true;
@@ -917,6 +918,27 @@ export default function App() {
     }
     return false;
   }, [classSchedule, teachers]);
+
+  const doesClassMatchSearch = useCallback((cls: string, tags: string[], currentQ: string) => {
+    if (tags.length === 0 && !currentQ) return true;
+    const queries = [...tags];
+    if (currentQ) queries.push(currentQ);
+    return queries.some(q => doesClassMatchItem(cls, q));
+  }, [doesClassMatchItem]);
+  
+  const doesTeacherMatchSearch = useCallback((teacher: Teacher, tags: string[], currentQ: string) => {
+    if (tags.length === 0 && !currentQ) return true;
+    const queries = [...tags];
+    if (currentQ) queries.push(currentQ);
+    return queries.some(q => normalizeGreek(teacher.name).includes(normalizeGreek(q)));
+  }, []);
+
+  const isCellMatch = useCallback((val: string, teacherName: string, tags: string[], currentQ: string) => {
+    if (tags.length === 0 && !currentQ) return false;
+    const queries = [...tags];
+    if (currentQ) queries.push(currentQ);
+    return queries.some(q => normalizeGreek(val).includes(normalizeGreek(q)) || normalizeGreek(teacherName).includes(normalizeGreek(q)));
+  }, []);
 
 
   const renderClassCard = (cls: string) => {
@@ -981,7 +1003,7 @@ export default function App() {
                   const isTutor = classTutors[cls] === val && val !== '';
                   const teacherColorClass = isBlocked ? "bg-slate-200 text-slate-400" : (val ? (isTutor ? "bg-yellow-300 text-yellow-950 font-bold border-l-4 border-yellow-500 shadow-inner" : getTeacherColor(val)) : "");
                   const isFocused = focusedCell?.rowIdx === rowIdx && focusedCell?.cIdx === cIdx;
-                  const isSearchMatch = searchQuery && val && (normalizeGreek(val).includes(normalizeGreek(searchQuery)) || (teacherObj && normalizeGreek(teacherObj.name).includes(normalizeGreek(searchQuery))));
+                  const isSearchMatch = isCellMatch(val, teacherName, searchTags, searchQuery);
                   
                   return (
                     <td key={dIdx} className="p-0 relative h-10 border-b border-r last:border-r-0 border-slate-200 bg-white">
@@ -1105,28 +1127,28 @@ export default function App() {
           {/* View Modes */}
           <div className="flex bg-slate-100 p-1 rounded-lg border border-slate-200">
             <button
-              onClick={() => { setViewMode('teacher'); setFocusedCell(null); setIsEditing(false); setSearchQuery(''); }}
+              onClick={() => { setViewMode('teacher'); setFocusedCell(null); setIsEditing(false); setSearchQuery(''); setSearchTags([]); }}
               className={`p-1.5 rounded-md transition-colors ${viewMode === 'teacher' ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-500 hover:text-slate-900 hover:bg-slate-200/50'}`}
               title="Εκπαιδευτικοί (Γραμμικά)"
             >
               <Users className="w-4 h-4" />
             </button>
             <button
-              onClick={() => { setViewMode('teacher-grid'); setFocusedCell(null); setIsEditing(false); setSearchQuery(''); }}
+              onClick={() => { setViewMode('teacher-grid'); setFocusedCell(null); setIsEditing(false); setSearchQuery(''); setSearchTags([]); }}
               className={`p-1.5 rounded-md transition-colors ${viewMode === 'teacher-grid' ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-500 hover:text-slate-900 hover:bg-slate-200/50'}`}
               title="Εκπαιδευτικοί (Πλέγμα)"
             >
               <LayoutGrid className="w-4 h-4" />
             </button>
             <button
-              onClick={() => { setViewMode('class-horizontal'); setFocusedCell(null); setIsEditing(false); setSearchQuery(''); }}
+              onClick={() => { setViewMode('class-horizontal'); setFocusedCell(null); setIsEditing(false); setSearchQuery(''); setSearchTags([]); }}
               className={`p-1.5 rounded-md transition-colors ${viewMode === 'class-horizontal' ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-500 hover:text-slate-900 hover:bg-slate-200/50'}`}
               title="Τμήματα (Γραμμικά)"
             >
               <List className="w-4 h-4" />
             </button>
             <button
-              onClick={() => { setViewMode('class-grid'); setFocusedCell(null); setIsEditing(false); setSearchQuery(''); }}
+              onClick={() => { setViewMode('class-grid'); setFocusedCell(null); setIsEditing(false); setSearchQuery(''); setSearchTags([]); }}
               className={`p-1.5 rounded-md transition-colors ${viewMode === 'class-grid' ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-500 hover:text-slate-900 hover:bg-slate-200/50'}`}
               title="Τμήματα (Πλέγμα)"
             >
@@ -1137,20 +1159,42 @@ export default function App() {
 
         {/* Center Section: Search */}
         <div className="flex-1 flex justify-center max-w-md mx-auto">
-          <div className="relative w-full">
-            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-            <input 
-              type="text" 
-              placeholder={['teacher', 'teacher-grid'].includes(viewMode) ? 'Αναζήτηση Εκπαιδευτικού...' : 'Αναζήτηση τμήματος, εκπαιδευτικού...'}
-              value={searchQuery}
-              onChange={e => setSearchQuery(e.target.value)}
-              onFocus={() => setFocusedCell(null)}
-              className="pl-9 pr-8 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white w-full transition-all placeholder:text-slate-400"
-            />
-            {searchQuery && (
+          <div className="relative w-full flex items-center bg-slate-50 border border-slate-200 rounded-lg focus-within:ring-2 focus-within:ring-blue-500 focus-within:bg-white transition-all pl-2 pr-1 py-1 overflow-x-auto min-h-[38px] custom-scrollbar">
+            <Search className="w-4 h-4 text-slate-400 shrink-0 ml-1 mr-1.5" />
+            <div className="flex items-center gap-1.5 flex-1 w-full min-w-0 flex-nowrap">
+              {searchTags.map((tag, idx) => (
+                <span key={idx} className="flex items-center gap-1 bg-blue-100 text-blue-800 text-xs font-semibold px-2 py-0.5 rounded-md whitespace-nowrap shrink-0">
+                  {tag}
+                  <button onClick={() => setSearchTags(prev => prev.filter((_, i) => i !== idx))} className="hover:text-blue-900 transition-colors bg-blue-200/50 rounded-full p-0.5">
+                    <X className="w-3 h-3" />
+                  </button>
+                </span>
+              ))}
+              <input 
+                type="text" 
+                placeholder={searchTags.length === 0 ? (['teacher', 'teacher-grid'].includes(viewMode) ? 'Αναζήτηση Εκπαιδευτικού (Enter)' : 'Αναζήτηση τμήματος, εκπαιδευτικού (Enter)') : ''}
+                value={searchQuery}
+                onChange={e => setSearchQuery(e.target.value)}
+                onFocus={() => setFocusedCell(null)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && searchQuery.trim()) {
+                    e.preventDefault();
+                    if (!searchTags.includes(searchQuery.trim())) {
+                      setSearchTags(prev => [...prev, searchQuery.trim()]);
+                    }
+                    setSearchQuery('');
+                  } else if (e.key === 'Backspace' && !searchQuery && searchTags.length > 0) {
+                    setSearchTags(prev => prev.slice(0, -1));
+                  }
+                }}
+                className="bg-transparent border-none focus:outline-none text-sm w-full min-w-[140px] py-0.5 text-slate-700 placeholder:text-slate-400"
+              />
+            </div>
+            {(searchQuery || searchTags.length > 0) && (
               <button 
-                onClick={() => setSearchQuery('')} 
-                className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-1"
+                onClick={() => { setSearchQuery(''); setSearchTags([]); }} 
+                className="text-slate-400 hover:text-slate-600 p-1 shrink-0 bg-white rounded-md ml-1 shadow-sm border border-slate-100"
+                title="Καθαρισμός Αναζήτησης"
               >
                 <X className="w-3.5 h-3.5" />
               </button>
@@ -1282,7 +1326,7 @@ export default function App() {
           {['class-grid', 'teacher-grid'].includes(viewMode) ? (
             <div className={viewMode === 'class-grid' ? "flex gap-5 items-start w-max pb-8" : "grid grid-cols-1 xl:grid-cols-2 2xl:grid-cols-3 gap-5 pb-8 items-start"}>
             {viewMode === 'class-grid' ? ( Object.entries(classesByGrade).map(([grade, gradeClasses]) => {
-              const filteredClasses = gradeClasses.filter(cls => doesClassMatchSearch(cls, searchQuery));
+              const filteredClasses = gradeClasses.filter(cls => doesClassMatchSearch(cls, searchTags, searchQuery));
               if (filteredClasses.length === 0) return null;
               
               return (
@@ -1293,7 +1337,7 @@ export default function App() {
               </div>
             );
           })) : (
-            displayTeachers.filter(t => normalizeGreek(t.name).includes(normalizeGreek(searchQuery))).map((teacher) => {
+            displayTeachers.filter(t => doesTeacherMatchSearch(t, searchTags, searchQuery)).map((teacher) => {
               const rowIdx = displayTeachers.findIndex(t => t.id === teacher.id);
               const tSchedule = schedule[teacher.id] || {};
               let currentHours = 0;
@@ -1443,7 +1487,7 @@ export default function App() {
               <tbody>
                 {['teacher', 'teacher-grid'].includes(viewMode) ? (
                   /* --- TEACHER VIEW --- */
-                  displayTeachers.filter(t => normalizeGreek(t.name).includes(normalizeGreek(searchQuery))).map((teacher) => {
+                  displayTeachers.filter(t => doesTeacherMatchSearch(t, searchTags, searchQuery)).map((teacher) => {
                     const rowIdx = displayTeachers.findIndex(t => t.id === teacher.id);
                     const tSchedule = schedule[teacher.id] || {};
                     let currentHours = 0;
@@ -1567,7 +1611,7 @@ export default function App() {
                   })
                 ) : (
                   /* --- CLASS VIEW --- */
-                  classes.filter(cls => doesClassMatchSearch(cls, searchQuery)).map((cls) => {
+                  classes.filter(cls => doesClassMatchSearch(cls, searchTags, searchQuery)).map((cls) => {
                     const rowIdx = classes.indexOf(cls);
                     const cSchedule = classSchedule[cls] || {};
                     const clsColor = getClassColor(cls);
@@ -1589,7 +1633,7 @@ export default function App() {
                               const teacherColorClass = isBlocked ? "bg-slate-200 text-slate-400" : (val ? (isTutor ? "bg-yellow-300 text-yellow-950 font-bold border-l-4 border-yellow-500 shadow-inner" : getTeacherColor(val)) : "");
                               const isFocused = focusedCell?.rowIdx === rowIdx && focusedCell?.cIdx === cIdx;
                               const isLastHour = hIdx === 7;
-                              const isSearchMatch = searchQuery && val && (normalizeGreek(val).includes(normalizeGreek(searchQuery)) || (teacherObj && normalizeGreek(teacherObj.name).includes(normalizeGreek(searchQuery))));
+                              const isSearchMatch = isCellMatch(val, teacherName, searchTags, searchQuery);
                               
                               return (
                                 <td key={hIdx} className={`p-0 relative h-10 min-w-[80px] bg-white border-b border-b-slate-200 ${isLastHour ? 'border-r-2 border-r-slate-400' : 'border-r border-r-slate-200'}`}>
