@@ -226,7 +226,7 @@ export default function App() {
 
   useEffect(() => {
     setSelectedCells([]);
-  }, [viewMode, searchQuery]);
+  }, [viewMode, searchQuery, searchTags]);
 
   const toggleLock = (teacherId: string, day: number, hour: number, classId: string) => {
     setLockedAssignments(prev => {
@@ -1016,7 +1016,8 @@ export default function App() {
                         }}
                         onDragOver={(e) => e.preventDefault()}
                         onDrop={(e) => {
-                          if (val === 'BLOCK' || (val && isLocked(val, dIdx, hIdx, cls))) return;
+                                      e.stopPropagation();
+                                      if (val === 'BLOCK' || (val && isLocked(val, dIdx, hIdx, cls))) return;
                           e.preventDefault();
                           try {
                             const data = JSON.parse(e.dataTransfer.getData('application/json'));
@@ -1153,6 +1154,14 @@ export default function App() {
               title="Τμήματα (Πλέγμα)"
             >
               <LayoutTemplate className="w-4 h-4" />
+            </button>
+            <button
+              onClick={() => { setViewMode('mixed-grid'); setFocusedCell(null); setIsEditing(false); }}
+              className={`p-1.5 rounded-md transition-colors flex items-center gap-1 px-2 ${viewMode === 'mixed-grid' ? 'bg-blue-100 text-blue-700 shadow-sm ring-1 ring-blue-300' : 'text-blue-600 hover:bg-blue-50 bg-blue-50/50'}`}
+              title="Έξυπνη Προβολή (Mixed)"
+            >
+              <Search className="w-4 h-4" />
+              <span className="text-xs font-semibold">Έξυπνη</span>
             </button>
           </div>
         </div>
@@ -1322,10 +1331,19 @@ export default function App() {
       </header>
 
       <main className="flex-1 bg-slate-50 relative flex flex-col overflow-hidden">
-        <div className={`p-6 w-full flex-1 flex flex-col min-w-0 ${['class-grid', 'teacher-grid'].includes(viewMode) ? 'overflow-auto' : 'overflow-hidden'}`}>
-          {['class-grid', 'teacher-grid'].includes(viewMode) ? (
-            <div className={viewMode === 'class-grid' ? "flex gap-5 items-start w-max pb-8" : "grid grid-cols-1 xl:grid-cols-2 2xl:grid-cols-3 gap-5 pb-8 items-start"}>
-            {viewMode === 'class-grid' ? ( Object.entries(classesByGrade).map(([grade, gradeClasses]) => {
+        <div className={`p-6 w-full flex-1 flex flex-col min-w-0 ${['class-grid', 'teacher-grid', 'mixed-grid'].includes(viewMode) ? 'overflow-auto' : 'overflow-hidden'}`}>
+{['class-grid', 'teacher-grid', 'mixed-grid'].includes(viewMode) ? (
+            <div className="flex flex-col gap-8 pb-8 w-max">
+              {['class-grid', 'mixed-grid'].includes(viewMode) && (
+                <div className="w-full">
+                  {viewMode === 'mixed-grid' && (
+                    <h2 className="text-xl font-bold text-slate-800 mb-4 px-2 flex items-center gap-2">
+                      <List className="w-5 h-5 text-blue-600" />
+                      Τμήματα
+                    </h2>
+                  )}
+                  <div className="flex gap-5 items-start w-max">
+            {Object.entries(classesByGrade).map(([grade, gradeClasses]) => {
               const filteredClasses = gradeClasses.filter(cls => doesClassMatchSearch(cls, searchTags, searchQuery));
               if (filteredClasses.length === 0) return null;
               
@@ -1336,8 +1354,20 @@ export default function App() {
                 })}
               </div>
             );
-          })) : (
-            displayTeachers.filter(t => doesTeacherMatchSearch(t, searchTags, searchQuery)).map((teacher) => {
+          })}
+                  </div>
+                </div>
+              )}
+              {['teacher-grid', 'mixed-grid'].includes(viewMode) && (
+                <div className="w-full">
+                  {viewMode === 'mixed-grid' && (
+                    <h2 className="text-xl font-bold text-slate-800 mb-4 px-2 mt-4 flex items-center gap-2">
+                      <Users className="w-5 h-5 text-blue-600" />
+                      Εκπαιδευτικοί
+                    </h2>
+                  )}
+                  <div className="grid grid-cols-1 xl:grid-cols-2 2xl:grid-cols-3 gap-5 items-start">
+          {displayTeachers.filter(t => doesTeacherMatchSearch(t, searchTags, searchQuery)).map((teacher) => {
               const rowIdx = displayTeachers.findIndex(t => t.id === teacher.id);
               const tSchedule = schedule[teacher.id] || {};
               let currentHours = 0;
@@ -1378,7 +1408,8 @@ export default function App() {
                                   onDragStart={(e) => e.dataTransfer.setData('application/json', JSON.stringify({ type: 'class', val, source: { id: teacher.id, day: dIdx, hour: hIdx, val } }))}
                                   onDragOver={(e) => e.preventDefault()}
                                   onDrop={(e) => {
-                                    if (val === 'BLOCK' || (val && isLocked(teacher.id, dIdx, hIdx, val))) return;
+                                      e.stopPropagation();
+                                      if (val === 'BLOCK' || (val && isLocked(teacher.id, dIdx, hIdx, val))) return;
                                     e.preventDefault();
                                     try { 
                                       const data = JSON.parse(e.dataTransfer.getData('application/json')); 
@@ -1446,9 +1477,11 @@ export default function App() {
                   </table>
                 </div>
               );
-            })
-          )}
-          </div>
+            })}
+                  </div>
+                </div>
+              )}
+            </div>
         ) : (
         <div className="bg-white rounded-xl shadow-sm border border-slate-200 relative flex-1 flex flex-col overflow-hidden w-full">
           <div className="overflow-auto flex-1 pb-32">
@@ -1533,6 +1566,7 @@ export default function App() {
                                     }}
                                     onDragOver={(e) => e.preventDefault()}
                                     onDrop={(e) => {
+                                      e.stopPropagation();
                                       if (firstClass === 'BLOCK' || (firstClass && isLocked(teacher.id, dIdx, hIdx, firstClass))) return;
                                       e.preventDefault();
                                       try {
@@ -1646,7 +1680,8 @@ export default function App() {
                         }}
                         onDragOver={(e) => e.preventDefault()}
                         onDrop={(e) => {
-                          if (val === 'BLOCK' || (val && isLocked(val, dIdx, hIdx, cls))) return;
+                                      e.stopPropagation();
+                                      if (val === 'BLOCK' || (val && isLocked(val, dIdx, hIdx, cls))) return;
                                       e.preventDefault();
                                       try {
                                         const data = JSON.parse(e.dataTransfer.getData('application/json'));
@@ -1872,7 +1907,7 @@ export default function App() {
               </button>
 
               <button
-                onClick={() => setDragConflict(null)}
+                onClick={(e) => { e.preventDefault(); e.stopPropagation(); setDragConflict(null); setSchedule(prev => ({...prev})); }}
                 className="w-full mt-2 px-4 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium transition-colors text-center"
               >
                 Ακύρωση
@@ -1934,7 +1969,7 @@ export default function App() {
               <div>
                 <p className="text-xs text-slate-400 font-medium tracking-wider mb-1">ΕΚΔΟΣΗ</p>
                 {/* Version Number - Update this manually when deploying new versions */}
-                <span className="inline-block px-3 py-1 bg-blue-50 text-blue-700 rounded-full font-bold text-sm">v.1.8.20260905</span>
+                <span className="inline-block px-3 py-1 bg-blue-50 text-blue-700 rounded-full font-bold text-sm">v.1.9.20260906</span>
               </div>
             </div>
           </div>
