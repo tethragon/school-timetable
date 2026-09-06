@@ -165,20 +165,18 @@ export default function App() {
     return () => window.removeEventListener('storage', handleStorageChange);
   }, []);
   
-  type SelectedCell = { r: number, c: number, tId: string, d: number, h: number, cId: string };
+  type SelectedCell = { r: number, c: number, tId: string, d: number, h: number, cId: string, type: 'teacher' | 'class' };
   const [selectedCells, setSelectedCells] = useState<SelectedCell[]>([]);
 
-  const toggleCellSelection = (r: number, c: number, tId: string, d: number, h: number, cId: string) => {
+  const toggleCellSelection = (r: number, c: number, tId: string, d: number, h: number, cId: string, type: 'teacher' | 'class') => {
     setSelectedCells(prev => {
-      const exists = prev.some(cell => cell.r === r && cell.c === c);
-      if (exists) return prev.filter(cell => cell.r !== r || cell.c !== c);
-      return [...prev, { r, c, tId, d, h, cId }];
+      const exists = prev.some(cell => cell.r === r && cell.c === c && cell.type === type);
+      if (exists) return prev.filter(cell => !(cell.r === r && cell.c === c && cell.type === type));
+      return [...prev, { r, c, tId, d, h, cId, type }];
     });
   };
 
   const blockSelected = () => {
-    const isTeacherView = ['teacher', 'teacher-grid'].includes(viewMode);
-    
     setHistory(prev => {
       const newHistory = [{ id: Date.now().toString(), description: `Μαζικός αποκλεισμός (${selectedCells.length} ώρες)`, oldSchedule: JSON.parse(JSON.stringify(schedule)) }, ...prev];
       return newHistory.slice(0, 30);
@@ -193,7 +191,7 @@ export default function App() {
          const d = cell.d;
          const h = cell.h;
          
-         if (isTeacherView) {
+         if (cell.type === 'teacher') {
             const tId = cell.tId;
             const classId = "BLOCK";
             if (!newState[tId]) newState[tId] = {};
@@ -305,7 +303,7 @@ export default function App() {
     source: { id?: string; day?: number; hour?: number; val: string; clipboardUid?: string };
     target: { id: string; day: number; hour: number; val: string };
   } | null>(null);
-  const [focusedCell, setFocusedCell] = useState<{rowIdx: number, cIdx: number} | null>(null);
+  const [focusedCell, setFocusedCell] = useState<{rowIdx: number, cIdx: number, type?: 'teacher' | 'class'} | null>(null);
   const [isEditing, setIsEditing] = useState(false);
   const [editIndex, setEditIndex] = useState(0);
   const [internalClipboard, setInternalClipboard] = useState<{type: string, val: string} | null>(null);
@@ -330,7 +328,7 @@ export default function App() {
   ].sort((a, b) => a.name.localeCompare(b.name, 'el'));
 
   const numCols = 40; // 5 days * 8 hours
-  const numRows = ['teacher', 'teacher-grid'].includes(viewMode) ? displayTeachers.length : classes.length;
+  const numRows = (viewMode === 'mixed-grid' ? focusedCell?.type === 'teacher' : ['teacher', 'teacher-grid'].includes(viewMode)) ? displayTeachers.length : classes.length;
 
   useEffect(() => {
     if (focusedCell && !isEditing) {
@@ -611,7 +609,9 @@ export default function App() {
     return val;
   };
 
-  const sortedOptions = ['teacher', 'teacher-grid'].includes(viewMode)
+  const activeCellType = viewMode === 'mixed-grid' ? (focusedCell?.type || 'class') : (['teacher', 'teacher-grid'].includes(viewMode) ? 'teacher' : 'class');
+  
+  const sortedOptions = activeCellType === 'teacher'
     ? ["", "BLOCK", ...[...classes].sort((a, b) => a.localeCompare(b, 'el'))] 
     : ["", ...displayTeachers.map(t => t.id)];
 
@@ -624,7 +624,7 @@ export default function App() {
     if ((e.code === 'KeyC' || e.code === 'KeyV') && (e.ctrlKey || e.metaKey)) {
       e.preventDefault();
       let dIdx, hIdx;
-      if (['class-grid', 'teacher-grid'].includes(viewMode)) {
+      if (['class-grid', 'teacher-grid', 'mixed-grid'].includes(viewMode)) {
         dIdx = focusedCell.cIdx % 5;
         hIdx = Math.floor(focusedCell.cIdx / 5);
       } else {
@@ -633,7 +633,7 @@ export default function App() {
       }
       
       let currentVal = "";
-      if (['teacher', 'teacher-grid'].includes(viewMode)) {
+      if ((viewMode === 'mixed-grid' ? focusedCell.type === 'teacher' : ['teacher', 'teacher-grid'].includes(viewMode))) {
         const cellClasses = schedule[displayTeachers[focusedCell.rowIdx].id]?.[dIdx]?.[hIdx] || [];
         currentVal = cellClasses[0] || "";
       } else {
@@ -641,11 +641,11 @@ export default function App() {
       }
 
       if (e.code === 'KeyC' && currentVal) {
-        setInternalClipboard({ type: ['teacher', 'teacher-grid'].includes(viewMode) ? 'class' : 'teacher', val: currentVal });
+        setInternalClipboard({ type: (viewMode === 'mixed-grid' ? focusedCell.type === 'teacher' : ['teacher', 'teacher-grid'].includes(viewMode)) ? 'class' : 'teacher', val: currentVal });
       } else if (e.code === 'KeyV' && internalClipboard) {
-        if (['teacher', 'teacher-grid'].includes(viewMode) && internalClipboard.type === 'class') {
+        if ((viewMode === 'mixed-grid' ? focusedCell.type === 'teacher' : ['teacher', 'teacher-grid'].includes(viewMode)) && internalClipboard.type === 'class') {
            updateCell(displayTeachers[focusedCell.rowIdx].id, dIdx, hIdx, internalClipboard.val);
-        } else if (!['teacher', 'teacher-grid'].includes(viewMode) && internalClipboard.type === 'teacher') {
+        } else if (!(viewMode === 'mixed-grid' ? focusedCell.type === 'teacher' : ['teacher', 'teacher-grid'].includes(viewMode)) && internalClipboard.type === 'teacher') {
            updateClassCell(classes[focusedCell.rowIdx], dIdx, hIdx, internalClipboard.val);
         }
       }
@@ -655,7 +655,7 @@ export default function App() {
     if (e.key === 'Delete' || e.key === 'Backspace') {
       e.preventDefault();
       let dIdx, hIdx;
-      if (['class-grid', 'teacher-grid'].includes(viewMode)) {
+      if (['class-grid', 'teacher-grid', 'mixed-grid'].includes(viewMode)) {
         dIdx = focusedCell.cIdx % 5;
         hIdx = Math.floor(focusedCell.cIdx / 5);
       } else {
@@ -664,7 +664,7 @@ export default function App() {
       }
       
       // Check if locked
-      if (['teacher', 'teacher-grid'].includes(viewMode)) {
+      if ((viewMode === 'mixed-grid' ? focusedCell.type === 'teacher' : ['teacher', 'teacher-grid'].includes(viewMode))) {
         const tId = displayTeachers[focusedCell.rowIdx].id;
         const currentClasses = schedule[tId]?.[dIdx]?.[hIdx] || [];
         if (currentClasses.some(c => isLocked(tId, dIdx, hIdx, c))) return;
@@ -675,14 +675,14 @@ export default function App() {
       }
 
       let _dummy;
-      if (['class-grid', 'teacher-grid'].includes(viewMode)) {
+      if (['class-grid', 'teacher-grid', 'mixed-grid'].includes(viewMode)) {
         dIdx = focusedCell.cIdx % 5;
         hIdx = Math.floor(focusedCell.cIdx / 5);
       } else {
         dIdx = Math.floor(focusedCell.cIdx / 8);
         hIdx = focusedCell.cIdx % 8;
       }
-      if (['teacher', 'teacher-grid'].includes(viewMode)) {
+      if ((viewMode === 'mixed-grid' ? focusedCell.type === 'teacher' : ['teacher', 'teacher-grid'].includes(viewMode))) {
         updateCell(displayTeachers[focusedCell.rowIdx].id, dIdx, hIdx, "");
       } else {
         updateClassCell(classes[focusedCell.rowIdx], dIdx, hIdx, "");
@@ -701,7 +701,7 @@ export default function App() {
       } else if (e.key === 'Enter') {
         e.preventDefault();
         let dIdx, hIdx;
-        if (['class-grid', 'teacher-grid'].includes(viewMode)) {
+        if (['class-grid', 'teacher-grid', 'mixed-grid'].includes(viewMode)) {
           dIdx = focusedCell.cIdx % 5;
           hIdx = Math.floor(focusedCell.cIdx / 5);
         } else {
@@ -711,7 +711,7 @@ export default function App() {
 
         const selectedVal = sortedOptions[editIndex];
         
-        if (['teacher', 'teacher-grid'].includes(viewMode)) {
+        if ((viewMode === 'mixed-grid' ? focusedCell.type === 'teacher' : ['teacher', 'teacher-grid'].includes(viewMode))) {
           updateCell(displayTeachers[focusedCell.rowIdx].id, dIdx, hIdx, selectedVal);
         } else {
           updateClassCell(classes[focusedCell.rowIdx], dIdx, hIdx, selectedVal);
@@ -835,7 +835,7 @@ export default function App() {
       e.preventDefault();
       setIsEditing(true);
       let dIdx, hIdx;
-      if (['class-grid', 'teacher-grid'].includes(viewMode)) {
+      if (['class-grid', 'teacher-grid', 'mixed-grid'].includes(viewMode)) {
         dIdx = focusedCell.cIdx % 5;
         hIdx = Math.floor(focusedCell.cIdx / 5);
       } else {
@@ -844,7 +844,7 @@ export default function App() {
       }
       
       let currentVal = "";
-      if (['teacher', 'teacher-grid'].includes(viewMode)) {
+      if ((viewMode === 'mixed-grid' ? focusedCell.type === 'teacher' : ['teacher', 'teacher-grid'].includes(viewMode))) {
         const cellClasses = schedule[displayTeachers[focusedCell.rowIdx].id]?.[dIdx]?.[hIdx] || [];
         currentVal = cellClasses[0] || "";
       } else {
@@ -872,10 +872,14 @@ export default function App() {
     }
   };
 
-  const handleCellClick = (rowIdx: number, cIdx: number, currentVal: string) => {
-    setFocusedCell({ rowIdx, cIdx });
+  const handleCellClick = (rowIdx: number, cIdx: number, currentVal: string, type: 'teacher' | 'class') => {
+    setFocusedCell({ rowIdx, cIdx, type });
     setIsEditing(true);
-    setEditIndex(Math.max(0, sortedOptions.indexOf(currentVal)));
+    const activeCellType = viewMode === 'mixed-grid' ? type : (['teacher', 'teacher-grid'].includes(viewMode) ? 'teacher' : 'class');
+    const options = activeCellType === 'teacher'
+      ? ["", "BLOCK", ...[...classes].sort((a, b) => a.localeCompare(b, 'el'))] 
+      : ["", ...displayTeachers.map(t => t.id)];
+    setEditIndex(Math.max(0, options.indexOf(currentVal)));
   };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1036,7 +1040,7 @@ export default function App() {
                   const isBlocked = val === 'BLOCK';
                   const isTutor = classTutors[cls] === val && val !== '';
                   const teacherColorClass = isBlocked ? "bg-slate-200 text-slate-400" : (val ? (isTutor ? "bg-yellow-300 text-yellow-950 font-bold border-l-4 border-yellow-500 shadow-inner" : getTeacherColor(val)) : "");
-                  const isFocused = focusedCell?.rowIdx === rowIdx && focusedCell?.cIdx === cIdx;
+                  const isFocused = focusedCell?.rowIdx === rowIdx && focusedCell?.cIdx === cIdx && focusedCell?.type === 'class';
                   const isSearchMatch = isCellMatch(val, teacherName, searchTags, searchQuery);
                   
                   return (
@@ -1070,14 +1074,14 @@ export default function App() {
                         onClick={(e) => {
                           e.stopPropagation();
                           if (e.ctrlKey || e.metaKey) {
-                            toggleCellSelection(rowIdx, cIdx, val || "", dIdx, hIdx, cls);
+                            toggleCellSelection(rowIdx, cIdx, val || "", dIdx, hIdx, cls, 'class');
                             return;
                           }
                           setSelectedCells([]);
-                          handleCellClick(rowIdx, cIdx, val);
+                          handleCellClick(rowIdx, cIdx, val, 'class');
                         }}
                         className={`w-full h-full px-1 flex items-center justify-center text-xs text-center cursor-pointer outline-none select-none transition-colors
-                          ${selectedCells.some(sc => sc.r === rowIdx && sc.c === cIdx) ? '!ring-2 !ring-inset !ring-blue-600 !bg-blue-200 !text-blue-900 font-bold z-20' : ''}
+                          ${selectedCells.some(sc => sc.r === rowIdx && sc.c === cIdx && sc.type === 'class') ? '!ring-2 !ring-inset !ring-blue-600 !bg-blue-200 !text-blue-900 font-bold z-20' : ''}
                           ${isFocused && !isEditing ? 'ring-2 ring-inset ring-blue-500 z-10 bg-blue-50' : ''}
                           ${isSearchMatch && !isFocused ? 'ring-2 ring-inset ring-amber-400 bg-amber-100 z-10 font-bold text-amber-900' : (!isFocused && val ? `${teacherColorClass} font-medium` : 'text-slate-500 hover:bg-slate-50')}`}
                       >
@@ -1255,7 +1259,7 @@ export default function App() {
             <div className="flex items-center bg-blue-50 rounded-lg border border-blue-200 p-1 relative shadow-sm">
               <span className="text-xs text-blue-800 font-semibold px-2">{selectedCells.length} επιλεγμένα</span>
               <div className="w-px h-4 bg-blue-200 mx-1"></div>
-              {['teacher', 'teacher-grid'].includes(viewMode) && (
+              {['teacher', 'teacher-grid', 'mixed-grid'].includes(viewMode) && (
                 <>
                   <button onClick={blockSelected} className="p-1.5 text-red-600 hover:bg-white rounded-md transition-colors" title="Αποκλεισμός επιλεγμένων (Χ)"><Ban className="w-4 h-4"/></button>
                   <div className="w-px h-4 bg-blue-200 mx-1"></div>
@@ -1410,7 +1414,7 @@ export default function App() {
               let currentHours = 0;
               for (let d = 0; d < 5; d++) {
                 if (tSchedule[d]) {
-                  currentHours += Object.values(tSchedule[d]).filter(classes => classes.length > 0 && !classes.includes('BLOCK')).length;
+                  currentHours += Object.values(tSchedule[d]).filter((classes: any) => classes.length > 0 && !classes.includes('BLOCK')).length;
                 }
               }
               const isOverHours = teacher.maxHours > 0 && currentHours > teacher.maxHours;
@@ -1435,7 +1439,7 @@ export default function App() {
                             const val = cellClasses[0] || "";
                             const isBlocked = val === 'BLOCK';
                             const clsColor = isBlocked ? "bg-slate-200 text-slate-400" : (val ? getClassColor(val) : "");
-                            const isFocused = focusedCell?.rowIdx === rowIdx && focusedCell?.cIdx === cIdx;
+                            const isFocused = focusedCell?.rowIdx === rowIdx && focusedCell?.cIdx === cIdx && focusedCell?.type === 'teacher';
                             return (
                               <td key={dIdx} className="p-0 relative h-10 border-b border-r last:border-r-0 border-slate-200 bg-white">
                                 <div
@@ -1465,14 +1469,14 @@ export default function App() {
                                   onClick={(e) => { 
                                       e.stopPropagation();
                                       if (e.ctrlKey || e.metaKey) {
-                                        toggleCellSelection(rowIdx, cIdx, teacher.id, dIdx, hIdx, val || "");
+                                        toggleCellSelection(rowIdx, cIdx, teacher.id, dIdx, hIdx, val || "", 'teacher');
                                         return;
                                       }
                                       setSelectedCells([]);
-                                      handleCellClick(rowIdx, cIdx, val); 
+                                      handleCellClick(rowIdx, cIdx, val, 'teacher'); 
                                   }}
                                   className={`w-full h-full px-1 flex items-center justify-center text-xs text-center cursor-pointer outline-none select-none transition-colors
-                                    ${selectedCells.some(sc => sc.r === rowIdx && sc.c === cIdx) ? '!ring-2 !ring-inset !ring-blue-600 !bg-blue-200 !text-blue-900 font-bold z-20' : ''}
+                                    ${selectedCells.some(sc => sc.r === rowIdx && sc.c === cIdx && sc.type === 'teacher') ? '!ring-2 !ring-inset !ring-blue-600 !bg-blue-200 !text-blue-900 font-bold z-20' : ''}
                                     ${isFocused && !isEditing ? 'ring-2 ring-inset ring-blue-500 z-10 bg-blue-50' : ''}
                                     ${!isFocused && val ? `${clsColor} font-bold` : 'text-slate-500 hover:bg-slate-50'}`}
                                 >
@@ -1566,7 +1570,7 @@ export default function App() {
                     let currentHours = 0;
                     for (let d = 0; d < 5; d++) {
                       if (tSchedule[d]) {
-                        currentHours += Object.values(tSchedule[d]).filter(classes => classes.length > 0 && !classes.includes('BLOCK')).length;
+                        currentHours += Object.values(tSchedule[d]).filter((classes: any) => classes.length > 0 && !classes.includes('BLOCK')).length;
                       }
                     }
                     const isOverHours = teacher.maxHours > 0 && currentHours > teacher.maxHours;
@@ -1590,7 +1594,7 @@ export default function App() {
                               const val = cellClasses.join(', ');
                               const firstClass = cellClasses[0] || "";
                               
-                              const isFocused = focusedCell?.rowIdx === rowIdx && focusedCell?.cIdx === cIdx;
+                              const isFocused = focusedCell?.rowIdx === rowIdx && focusedCell?.cIdx === cIdx && focusedCell?.type === 'teacher';
                               const isLastHour = hIdx === 7;
                               const isBlocked = firstClass === 'BLOCK';
                               const cellColorClass = isBlocked ? 'bg-slate-200 text-slate-400' : (firstClass ? getClassColor(firstClass) : 'hover:bg-slate-100 text-slate-600');
@@ -1626,14 +1630,14 @@ export default function App() {
                                     onClick={(e) => {
                                       e.stopPropagation();
                                       if (e.ctrlKey || e.metaKey) {
-                                        toggleCellSelection(rowIdx, cIdx, teacher.id, dIdx, hIdx, firstClass || "");
+                                        toggleCellSelection(rowIdx, cIdx, teacher.id, dIdx, hIdx, firstClass || "", 'teacher');
                                         return;
                                       }
                                       setSelectedCells([]);
-                                      handleCellClick(rowIdx, cIdx, firstClass);
+                                      handleCellClick(rowIdx, cIdx, firstClass, 'teacher');
                                     }}
                                     className={`w-full h-full flex items-center justify-center text-sm cursor-pointer outline-none select-none transition-colors
-                                      ${selectedCells.some(sc => sc.r === rowIdx && sc.c === cIdx) ? '!ring-2 !ring-inset !ring-blue-600 !bg-blue-200 !text-blue-900 font-bold z-20' : ''}
+                                      ${selectedCells.some(sc => sc.r === rowIdx && sc.c === cIdx && sc.type === 'teacher') ? '!ring-2 !ring-inset !ring-blue-600 !bg-blue-200 !text-blue-900 font-bold z-20' : ''}
                                       ${isFocused && !isEditing ? 'ring-2 ring-inset ring-blue-500 z-10' : ''}
                                       ${cellColorClass}`}
                                   >
@@ -1708,7 +1712,7 @@ export default function App() {
                               const isBlocked = val === 'BLOCK';
                               const isTutor = classTutors[cls] === val && val !== '';
                               const teacherColorClass = isBlocked ? "bg-slate-200 text-slate-400" : (val ? (isTutor ? "bg-yellow-300 text-yellow-950 font-bold border-l-4 border-yellow-500 shadow-inner" : getTeacherColor(val)) : "");
-                              const isFocused = focusedCell?.rowIdx === rowIdx && focusedCell?.cIdx === cIdx;
+                              const isFocused = focusedCell?.rowIdx === rowIdx && focusedCell?.cIdx === cIdx && focusedCell?.type === 'class';
                               const isLastHour = hIdx === 7;
                               const isSearchMatch = isCellMatch(val, teacherName, searchTags, searchQuery);
                               
@@ -1743,14 +1747,14 @@ export default function App() {
                                     onClick={(e) => {
                                       e.stopPropagation();
                                       if (e.ctrlKey || e.metaKey) {
-                                        toggleCellSelection(rowIdx, cIdx, val || "", dIdx, hIdx, cls);
+                                        toggleCellSelection(rowIdx, cIdx, val || "", dIdx, hIdx, cls, 'class');
                                         return;
                                       }
                                       setSelectedCells([]);
-                                      handleCellClick(rowIdx, cIdx, val);
+                                      handleCellClick(rowIdx, cIdx, val, 'class');
                                     }}
                                     className={`w-full h-full px-1 flex items-center justify-center text-xs text-center cursor-pointer outline-none select-none transition-colors
-                                      ${selectedCells.some(sc => sc.r === rowIdx && sc.c === cIdx) ? '!ring-2 !ring-inset !ring-blue-600 !bg-blue-200 !text-blue-900 font-bold z-20' : ''}
+                                      ${selectedCells.some(sc => sc.r === rowIdx && sc.c === cIdx && sc.type === 'class') ? '!ring-2 !ring-inset !ring-blue-600 !bg-blue-200 !text-blue-900 font-bold z-20' : ''}
                                       ${isFocused && !isEditing ? 'ring-2 ring-inset ring-blue-500 z-10 bg-blue-50' : ''}
                                       ${isSearchMatch && !isFocused ? 'ring-2 ring-inset ring-amber-400 bg-amber-100 z-10 font-bold text-amber-900' : (!isFocused && val ? `${teacherColorClass} font-medium` : 'text-slate-500 hover:bg-slate-50')}`}
                                   >
