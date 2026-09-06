@@ -1788,7 +1788,7 @@ export default function App() {
 
       {/* Footer Validation Bar */}
       <footer className="shrink-0 bg-white border-t border-slate-200 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)] min-h-[5rem] py-2 flex items-center px-6 z-50 justify-between relative gap-6">
-        <div className="flex-1 flex flex-col justify-center max-w-[30%]">
+        <div className="flex-1 flex flex-col justify-center max-w-[40%] pr-4">
            {errors.length === 0 ? (
              <div className="flex items-center gap-2 text-emerald-600 font-medium">
                <CheckCircle2 className="w-5 h-5 flex-shrink-0" />
@@ -1800,9 +1800,16 @@ export default function App() {
                  <AlertCircle className="w-5 h-5 flex-shrink-0" />
                  <span>Σφάλματα ({errors.length}):</span>
                </div>
-               <div className="text-red-700 font-medium text-sm truncate max-w-lg">
+               <div className="text-red-700 font-medium text-sm truncate flex-1">
                  {errors[0]?.message} {errors.length > 1 && "..."}
                </div>
+               <button 
+                 onClick={() => setShowErrorsModal(true)}
+                 className="flex items-center gap-1.5 bg-red-50 hover:bg-red-100 text-red-700 px-3 py-1.5 rounded-md font-medium text-xs transition-colors border border-red-200 shrink-0"
+               >
+                 <List className="w-3.5 h-3.5" />
+                 Προβολή όλων
+               </button>
              </div>
            )}
         </div>
@@ -1857,15 +1864,6 @@ export default function App() {
            </div>
         </div>
 
-        {errors.length > 0 && (
-           <button 
-             onClick={() => setShowErrorsModal(true)}
-             className="flex items-center gap-2 bg-red-50 hover:bg-red-100 text-red-700 px-4 py-2 rounded-md font-medium text-sm transition-colors border border-red-200 ml-4 shrink-0"
-           >
-             <List className="w-4 h-4" />
-             Προβολή όλων
-           </button>
-        )}
       </footer>
 
       
