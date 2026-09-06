@@ -104,7 +104,8 @@ export default function App() {
   
   const [viewSearches, setViewSearches] = useState<Record<string, { tags: string[], query: string }>>({});
   
-  const currentSearch = viewSearches[viewMode] || { tags: [], query: '' };
+  const defaultSearch = React.useMemo(() => ({ tags: [] as string[], query: '' }), []);
+  const currentSearch = viewSearches[viewMode] || defaultSearch;
   const searchTags = currentSearch.tags;
   const searchQuery = currentSearch.query;
 
