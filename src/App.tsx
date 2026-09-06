@@ -4,6 +4,7 @@ import { useValidation } from './hooks/useValidation';
 import { ScheduleData, Teacher, SubjectRule, DEFAULT_SUBJECT_RULES, HistoryAction } from './types';
 import { exportToCSV, importFromCSV } from './utils/csv';
 import { SettingsModal } from './components/SettingsModal';
+import { GroupsModal } from './components/GroupsModal';
 
 const DAYS = ['Δευτέρα', 'Τρίτη', 'Τετάρτη', 'Πέμπτη', 'Παρασκευή'];
 
@@ -45,6 +46,22 @@ export default function App() {
     }
     return [];
   });
+
+
+  type CrossClassGroups = Record<string, Record<string, string[]>>;
+  const [crossClassGroups, setCrossClassGroups] = useState<CrossClassGroups>(() => {
+    try {
+      const saved = localStorage.getItem('school_cross_class_groups');
+      if (saved) return JSON.parse(saved);
+    } catch (e) {
+      console.error('Failed to load cross class groups', e);
+    }
+    return { "ΑΓΓΛΙΚΑ": {}, "Β' ΞΕΝΗ ΓΛΩΣΣΑ": {}, "ΠΛΗΡΟΦΟΡΙΚΗ": {} };
+  });
+
+  useEffect(() => {
+    localStorage.setItem('school_cross_class_groups', JSON.stringify(crossClassGroups));
+  }, [crossClassGroups]);
 
   const [classes, setClasses] = useState<string[]>(() => {
     try {
@@ -101,6 +118,7 @@ export default function App() {
     return 'teacher';
   });
     const [showInfoModal, setShowInfoModal] = useState(false);
+  const [showGroupsModal, setShowGroupsModal] = useState(false);
   
   const [viewSearches, setViewSearches] = useState<Record<string, { tags: string[], query: string }>>({});
   
@@ -176,6 +194,22 @@ export default function App() {
     });
   };
 
+
+  const getCrossClassGroupTooltip = (subject: string, cls: string) => {
+    if (subject === "ΑΓΓΛΙΚΑ" || subject === "Β' ΞΕΝΗ ΓΛΩΣΣΑ") {
+      const grade = cls.match(/^[^\d]+/)?.[0] || cls; // Fixed regex for non-digits
+      const groupTeachers = crossClassGroups[subject]?.[grade] || [];
+      if (groupTeachers.length > 0) {
+        const names = groupTeachers.map(tId => {
+          const t = teachers.find(x => x.id === tId);
+          return t ? t.name : tId;
+        }).join(", ");
+        return `${subject} ${grade}': ${names}`;
+      }
+    }
+    return undefined;
+  };
+
   const blockSelected = () => {
     setHistory(prev => {
       const newHistory = [{ id: Date.now().toString(), description: `Μαζικός αποκλεισμός (${selectedCells.length} ώρες)`, oldSchedule: JSON.parse(JSON.stringify(schedule)) }, ...prev];
@@ -185,7 +219,23 @@ export default function App() {
     setSchedule(prev => {
       const newState = JSON.parse(JSON.stringify(prev));
 
-      const getPrefixLocal = (c) => c.match(/^[^d]+/)?.[0] || c;
+    
+  const getCrossClassGroupTooltip = (subject: string, cls: string) => {
+    if (subject === "ΑΓΓΛΙΚΑ" || subject === "Β' ΞΕΝΗ ΓΛΩΣΣΑ") {
+      const grade = cls.match(/^[^d]+/)?.[0] || cls;
+      const groupTeachers = crossClassGroups[subject]?.[grade] || [];
+      if (groupTeachers.length > 0) {
+        const names = groupTeachers.map(tId => {
+          const t = teachers.find(x => x.id === tId);
+          return t ? t.name : tId;
+        }).join(", ");
+        return `${subject} ${grade}': ${names}`;
+      }
+    }
+    return undefined;
+  };
+
+  const getPrefixLocal = (c) => c.match(/^[^d]+/)?.[0] || c;
 
       selectedCells.forEach(cell => {
          const d = cell.d;
@@ -373,13 +423,43 @@ export default function App() {
     return () => window.removeEventListener('keydown', handleKeyDownGlobal);
   }, [handleUndo]);
 
+
+  const getTeacherEffectiveSchedule = (teacherId: string, currentSchedule: ScheduleData = schedule) => {
+    const tSchedule = currentSchedule[teacherId] ? JSON.parse(JSON.stringify(currentSchedule[teacherId])) : {};
+    
+    Object.entries(crossClassGroups).forEach(([subject, grades]) => {
+      Object.entries(grades).forEach(([grade, groupTeachers]) => {
+        if (groupTeachers.includes(teacherId)) {
+           const subjectSchedule = currentSchedule[subject];
+           if (subjectSchedule) {
+             for (let d = 0; d < 5; d++) {
+               if (subjectSchedule[d]) {
+                 for (let h = 0; h < 8; h++) {
+                   const classesAtTime = subjectSchedule[d][h] || [];
+                   const getPrefix = (c: string) => c.match(/^[^d]+/)?.[0] || c;
+                   const assignedClassesInThisGrade = classesAtTime.filter(c => getPrefix(c) === grade);
+                   if (assignedClassesInThisGrade.length > 0) {
+                      if (!tSchedule[d]) tSchedule[d] = {};
+                      if (!tSchedule[d][h]) tSchedule[d][h] = [];
+                      tSchedule[d][h] = [...new Set([...tSchedule[d][h], ...assignedClassesInThisGrade])];
+                   }
+                 }
+               }
+             }
+           }
+        }
+      });
+    });
+    return tSchedule;
+  };
+
   const updateCell = (teacherId: string, day: number, hour: number, classId: string) => {
     if (!classId) {
       executeCellUpdate(teacherId, day, hour, classId, 'move');
       return;
     }
     if (!isVirtualTeacher(teacherId)) {
-      const busyClasses = schedule[teacherId]?.[day]?.[hour] || [];
+      const busyClasses = getTeacherEffectiveSchedule(teacherId)[day]?.[hour] || [];
       const actualBusy = busyClasses.filter(c => c !== classId);
       if (actualBusy.length > 0) {
         setConflictPending({
@@ -387,6 +467,19 @@ export default function App() {
         });
         return;
       }
+    } else if (teacherId === "ΑΓΓΛΙΚΑ" || teacherId === "Β' ΞΕΝΗ ΓΛΩΣΣΑ") {
+       const grade = classId.match(/^[^d]+/)?.[0] || classId;
+       const groupTeachers = crossClassGroups[teacherId]?.[grade] || [];
+       for (const tId of groupTeachers) {
+          const busyClasses = getTeacherEffectiveSchedule(tId)[day]?.[hour] || [];
+          const actualBusy = busyClasses.filter(c => c !== classId);
+          if (actualBusy.length > 0) {
+            setConflictPending({
+              type: 'teacher', day, hour, teacherId: tId, classId, conflictClasses: actualBusy
+            });
+            return;
+          }
+       }
     }
     executeCellUpdate(teacherId, day, hour, classId, 'move');
   };
@@ -442,7 +535,7 @@ export default function App() {
       return;
     }
     if (!isVirtualTeacher(newTeacherId)) {
-      const busyClasses = schedule[newTeacherId]?.[day]?.[hour] || [];
+      const busyClasses = getTeacherEffectiveSchedule(newTeacherId)[day]?.[hour] || [];
       const actualBusy = busyClasses.filter(c => c !== classId);
       if (actualBusy.length > 0) {
         setConflictPending({
@@ -450,6 +543,19 @@ export default function App() {
         });
         return;
       }
+    } else if (newTeacherId === "ΑΓΓΛΙΚΑ" || newTeacherId === "Β' ΞΕΝΗ ΓΛΩΣΣΑ") {
+       const grade = classId.match(/^[^d]+/)?.[0] || classId;
+       const groupTeachers = crossClassGroups[newTeacherId]?.[grade] || [];
+       for (const tId of groupTeachers) {
+          const busyClasses = getTeacherEffectiveSchedule(tId)[day]?.[hour] || [];
+          const actualBusy = busyClasses.filter(c => c !== classId);
+          if (actualBusy.length > 0) {
+            setConflictPending({
+              type: 'class', day, hour, teacherId: tId, classId, conflictClasses: actualBusy
+            });
+            return;
+          }
+       }
     }
     executeClassCellUpdate(classId, day, hour, newTeacherId, 'move');
   };
@@ -544,7 +650,7 @@ export default function App() {
     const isClass = classes.includes(optVal);
 
     if (isTeacher && !isVirtualTeacher(optVal)) {
-        const busyClasses = schedule[optVal]?.[d]?.[h] || [];
+        const busyClasses = getTeacherEffectiveSchedule(optVal)[d]?.[h] || [];
         if (busyClasses.length > 0) {
           return (
             <div className="flex justify-between items-center text-slate-400">
@@ -634,7 +740,7 @@ export default function App() {
       
       let currentVal = "";
       if ((viewMode === 'mixed-grid' ? focusedCell.type === 'teacher' : ['teacher', 'teacher-grid'].includes(viewMode))) {
-        const cellClasses = schedule[displayTeachers[focusedCell.rowIdx].id]?.[dIdx]?.[hIdx] || [];
+        const cellClasses = getTeacherEffectiveSchedule(displayTeachers[focusedCell.rowIdx].id)[dIdx]?.[hIdx] || [];
         currentVal = cellClasses[0] || "";
       } else {
         currentVal = classSchedule[classes[focusedCell.rowIdx]]?.[dIdx]?.[hIdx] || "";
@@ -666,7 +772,7 @@ export default function App() {
       // Check if locked
       if ((viewMode === 'mixed-grid' ? focusedCell.type === 'teacher' : ['teacher', 'teacher-grid'].includes(viewMode))) {
         const tId = displayTeachers[focusedCell.rowIdx].id;
-        const currentClasses = schedule[tId]?.[dIdx]?.[hIdx] || [];
+        const currentClasses = getTeacherEffectiveSchedule(tId)[dIdx]?.[hIdx] || [];
         if (currentClasses.some(c => isLocked(tId, dIdx, hIdx, c))) return;
       } else {
         const cId = classes[focusedCell.rowIdx];
@@ -845,7 +951,7 @@ export default function App() {
       
       let currentVal = "";
       if ((viewMode === 'mixed-grid' ? focusedCell.type === 'teacher' : ['teacher', 'teacher-grid'].includes(viewMode))) {
-        const cellClasses = schedule[displayTeachers[focusedCell.rowIdx].id]?.[dIdx]?.[hIdx] || [];
+        const cellClasses = getTeacherEffectiveSchedule(displayTeachers[focusedCell.rowIdx].id)[dIdx]?.[hIdx] || [];
         currentVal = cellClasses[0] || "";
       } else {
         currentVal = classSchedule[classes[focusedCell.rowIdx]]?.[dIdx]?.[hIdx] || "";
@@ -909,6 +1015,11 @@ export default function App() {
             setClassTutors(data.classTutors);
           } else {
             setClassTutors({});
+          }
+          if (data.crossClassGroups) {
+            setCrossClassGroups(data.crossClassGroups);
+          } else {
+            setCrossClassGroups({ "ΑΓΓΛΙΚΑ": {}, "Β' ΞΕΝΗ ΓΛΩΣΣΑ": {}, "ΠΛΗΡΟΦΟΡΙΚΗ": {} });
           }
         }
         
@@ -1080,6 +1191,7 @@ export default function App() {
                           setSelectedCells([]);
                           handleCellClick(rowIdx, cIdx, val, 'class');
                         }}
+                        title={getCrossClassGroupTooltip(val, cls)}
                         className={`w-full h-full px-1 flex items-center justify-center text-xs text-center cursor-pointer outline-none select-none transition-colors
                           ${selectedCells.some(sc => sc.r === rowIdx && sc.c === cIdx && sc.type === 'class') ? '!ring-2 !ring-inset !ring-blue-600 !bg-blue-200 !text-blue-900 font-bold z-20' : ''}
                           ${isFocused && !isEditing ? 'ring-2 ring-inset ring-blue-500 z-10 bg-blue-50' : ''}
@@ -1162,6 +1274,14 @@ export default function App() {
             title="Πληροφορίες Προγράμματος"
           >
             <BookOpen className="w-5 h-5" />
+          </button>
+          
+          <button
+            onClick={() => setShowGroupsModal(true)}
+            className="flex items-center justify-center p-2 bg-purple-50 hover:bg-purple-100 text-purple-600 rounded-md transition-colors shrink-0"
+            title="Ομάδες Ξένων Γλωσσών"
+          >
+            <Users className="w-5 h-5" />
           </button>
           
           <div className="w-px h-6 bg-slate-200 mx-1"></div>
@@ -1362,7 +1482,7 @@ export default function App() {
           </button>
           
           <button 
-            onClick={() => exportToCSV(schedule, teachers, classes, subjectRules, classTutors)}
+            onClick={() => exportToCSV(schedule, teachers, classes, subjectRules, classTutors, crossClassGroups)}
             className="p-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md transition-colors shadow-sm shrink-0"
             title="Εξαγωγή CSV"
           >
@@ -1410,7 +1530,7 @@ export default function App() {
                   <div className="grid grid-cols-1 xl:grid-cols-2 2xl:grid-cols-3 gap-5 items-start">
           {displayTeachers.filter(t => doesTeacherMatchSearch(t, searchTags, searchQuery)).map((teacher) => {
               const rowIdx = displayTeachers.findIndex(t => t.id === teacher.id);
-              const tSchedule = schedule[teacher.id] || {};
+              const tSchedule = getTeacherEffectiveSchedule(teacher.id) || {};
               let currentHours = 0;
               for (let d = 0; d < 5; d++) {
                 if (tSchedule[d]) {
@@ -1566,7 +1686,7 @@ export default function App() {
                   /* --- TEACHER VIEW --- */
                   displayTeachers.filter(t => doesTeacherMatchSearch(t, searchTags, searchQuery)).map((teacher) => {
                     const rowIdx = displayTeachers.findIndex(t => t.id === teacher.id);
-                    const tSchedule = schedule[teacher.id] || {};
+                    const tSchedule = getTeacherEffectiveSchedule(teacher.id) || {};
                     let currentHours = 0;
                     for (let d = 0; d < 5; d++) {
                       if (tSchedule[d]) {
@@ -1590,7 +1710,7 @@ export default function App() {
                           <React.Fragment key={dIdx}>
                             {[...Array(8)].map((_, hIdx) => {
                               const cIdx = dIdx * 8 + hIdx;
-                              const cellClasses = schedule[teacher.id]?.[dIdx]?.[hIdx] || [];
+                              const cellClasses = getTeacherEffectiveSchedule(teacher.id)[dIdx]?.[hIdx] || [];
                               const val = cellClasses.join(', ');
                               const firstClass = cellClasses[0] || "";
                               
@@ -1753,6 +1873,7 @@ export default function App() {
                                       setSelectedCells([]);
                                       handleCellClick(rowIdx, cIdx, val, 'class');
                                     }}
+                                    title={getCrossClassGroupTooltip(val, cls)}
                                     className={`w-full h-full px-1 flex items-center justify-center text-xs text-center cursor-pointer outline-none select-none transition-colors
                                       ${selectedCells.some(sc => sc.r === rowIdx && sc.c === cIdx && sc.type === 'class') ? '!ring-2 !ring-inset !ring-blue-600 !bg-blue-200 !text-blue-900 font-bold z-20' : ''}
                                       ${isFocused && !isEditing ? 'ring-2 ring-inset ring-blue-500 z-10 bg-blue-50' : ''}
@@ -2087,12 +2208,19 @@ export default function App() {
               <div>
                 <p className="text-xs text-slate-400 font-medium tracking-wider mb-1">ΕΚΔΟΣΗ</p>
                 {/* Version Number - Update this manually when deploying new versions */}
-                <span className="inline-block px-3 py-1 bg-blue-50 text-blue-700 rounded-full font-bold text-sm">v.1.9.20260906</span>
+                <span className="inline-block px-3 py-1 bg-blue-50 text-blue-700 rounded-full font-bold text-sm">v.2.0.20260906</span>
               </div>
             </div>
           </div>
         </div>
       )}
+      <GroupsModal
+        isOpen={showGroupsModal}
+        onClose={() => setShowGroupsModal(false)}
+        crossClassGroups={crossClassGroups}
+        setCrossClassGroups={setCrossClassGroups}
+        teachers={teachers}
+      />
       <SettingsModal 
         isOpen={showSettingsModal} 
         onClose={() => setShowSettingsModal(false)}
