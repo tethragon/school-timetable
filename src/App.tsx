@@ -222,7 +222,7 @@ export default function App() {
     
   const getCrossClassGroupTooltip = (subject: string, cls: string) => {
     if (subject === "ΑΓΓΛΙΚΑ" || subject === "Β' ΞΕΝΗ ΓΛΩΣΣΑ") {
-      const grade = cls.match(/^[^d]+/)?.[0] || cls;
+      const grade = cls.match(/^[^\d]+/)?.[0] || cls;
       const groupTeachers = crossClassGroups[subject]?.[grade] || [];
       if (groupTeachers.length > 0) {
         const names = groupTeachers.map(tId => {
@@ -235,7 +235,7 @@ export default function App() {
     return undefined;
   };
 
-  const getPrefixLocal = (c) => c.match(/^[^d]+/)?.[0] || c;
+  const getPrefixLocal = (c) => c.match(/^[^\d]+/)?.[0] || c;
 
       selectedCells.forEach(cell => {
          const d = cell.d;
@@ -436,7 +436,7 @@ export default function App() {
                if (subjectSchedule[d]) {
                  for (let h = 0; h < 8; h++) {
                    const classesAtTime = subjectSchedule[d][h] || [];
-                   const getPrefix = (c: string) => c.match(/^[^d]+/)?.[0] || c;
+                   const getPrefix = (c: string) => c.match(/^[^\d]+/)?.[0] || c;
                    const assignedClassesInThisGrade = classesAtTime.filter(c => getPrefix(c) === grade);
                    if (assignedClassesInThisGrade.length > 0) {
                       if (!tSchedule[d]) tSchedule[d] = {};
@@ -468,7 +468,7 @@ export default function App() {
         return;
       }
     } else if (teacherId === "ΑΓΓΛΙΚΑ" || teacherId === "Β' ΞΕΝΗ ΓΛΩΣΣΑ") {
-       const grade = classId.match(/^[^d]+/)?.[0] || classId;
+       const grade = classId.match(/^[^\d]+/)?.[0] || classId;
        const groupTeachers = crossClassGroups[teacherId]?.[grade] || [];
        for (const tId of groupTeachers) {
           const busyClasses = getTeacherEffectiveSchedule(tId)[day]?.[hour] || [];
@@ -544,7 +544,7 @@ export default function App() {
         return;
       }
     } else if (newTeacherId === "ΑΓΓΛΙΚΑ" || newTeacherId === "Β' ΞΕΝΗ ΓΛΩΣΣΑ") {
-       const grade = classId.match(/^[^d]+/)?.[0] || classId;
+       const grade = classId.match(/^[^\d]+/)?.[0] || classId;
        const groupTeachers = crossClassGroups[newTeacherId]?.[grade] || [];
        for (const tId of groupTeachers) {
           const busyClasses = getTeacherEffectiveSchedule(tId)[day]?.[hour] || [];
@@ -2208,7 +2208,7 @@ export default function App() {
               <div>
                 <p className="text-xs text-slate-400 font-medium tracking-wider mb-1">ΕΚΔΟΣΗ</p>
                 {/* Version Number - Update this manually when deploying new versions */}
-                <span className="inline-block px-3 py-1 bg-blue-50 text-blue-700 rounded-full font-bold text-sm">v.2.03.20260906</span>
+                <span className="inline-block px-3 py-1 bg-blue-50 text-blue-700 rounded-full font-bold text-sm">v.2.0.20260906</span>
               </div>
             </div>
           </div>
