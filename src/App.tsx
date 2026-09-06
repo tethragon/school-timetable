@@ -717,9 +717,17 @@ export default function App() {
 
   const activeCellType = viewMode === 'mixed-grid' ? (focusedCell?.type || 'class') : (['teacher', 'teacher-grid'].includes(viewMode) ? 'teacher' : 'class');
   
+  const classGridTeacherOptions = [
+    ...displayTeachers
+      .filter(t => !(t.subject && ALLOWED_SPECIAL_SUBJECTS.includes(t.subject)))
+      .map(t => t.id),
+    ...ALLOWED_SPECIAL_SUBJECTS
+  ];
+  const uniqueClassGridTeacherOptions = Array.from(new Set(classGridTeacherOptions));
+
   const sortedOptions = activeCellType === 'teacher'
     ? ["", "BLOCK", ...[...classes].sort((a, b) => a.localeCompare(b, 'el'))] 
-    : ["", ...displayTeachers.map(t => t.id)];
+    : ["", ...uniqueClassGridTeacherOptions];
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
@@ -2208,7 +2216,7 @@ export default function App() {
               <div>
                 <p className="text-xs text-slate-400 font-medium tracking-wider mb-1">ΕΚΔΟΣΗ</p>
                 {/* Version Number - Update this manually when deploying new versions */}
-                <span className="inline-block px-3 py-1 bg-blue-50 text-blue-700 rounded-full font-bold text-sm">v.2.0.20260906</span>
+                <span className="inline-block px-3 py-1 bg-blue-50 text-blue-700 rounded-full font-bold text-sm">v.2.05.20260906</span>
               </div>
             </div>
           </div>
