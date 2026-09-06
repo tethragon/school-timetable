@@ -202,6 +202,12 @@ export function SettingsModal({
                       type="text"
                       value={t.abbreviation || ''}
                       onChange={(e) => updateTeacher(t.id, 'abbreviation', e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          addTeacher();
+                        }
+                      }}
                       className="w-24 px-2 py-1.5 border border-slate-300 rounded-md text-sm bg-white focus:ring-2 focus:ring-blue-500 focus:outline-none"
                       placeholder="Συντ."
                       maxLength={15}
@@ -209,6 +215,12 @@ export function SettingsModal({
                     <select
                       value={t.subject || ''}
                       onChange={(e) => updateTeacher(t.id, 'subject', e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          addTeacher();
+                        }
+                      }}
                       className="w-32 px-2 py-1.5 border border-slate-300 rounded-md text-sm text-slate-700 bg-white focus:ring-2 focus:ring-blue-500 focus:outline-none"
                     >
                       <option value="">Γεν. Παιδείας</option>
@@ -221,6 +233,12 @@ export function SettingsModal({
                         type="number" 
                         value={t.maxHours}
                         onChange={(e) => updateTeacher(t.id, 'maxHours', parseInt(e.target.value) || 0)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          addTeacher();
+                        }
+                      }}
                         className="w-16 px-2 py-1.5 border border-slate-300 rounded-md text-sm text-center focus:ring-2 focus:ring-blue-500 focus:outline-none"
                         min="0"
                       />
@@ -315,6 +333,12 @@ export function SettingsModal({
                       type="text"
                       value={r.abbreviation || ''}
                       onChange={(e) => updateSubjectRuleAbbreviation(r.id, e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          addSubjectRule();
+                        }
+                      }}
                       className="w-24 px-2 py-1.5 border border-slate-300 rounded-md text-sm text-center bg-white focus:ring-2 focus:ring-blue-500 focus:outline-none"
                       placeholder="Συντ."
                       maxLength={15}
@@ -326,6 +350,12 @@ export function SettingsModal({
                         min="0"
                         value={hours}
                         onChange={(e) => updateSubjectRuleHours(r.id, gIdx, parseInt(e.target.value) || 0)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          addSubjectRule();
+                        }
+                      }}
                         className="w-10 px-1 py-1.5 border border-slate-300 rounded-md text-sm text-center focus:ring-2 focus:ring-blue-500 focus:outline-none"
                       />
                     ))}
