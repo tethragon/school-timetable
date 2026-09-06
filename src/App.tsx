@@ -279,9 +279,10 @@ export default function App() {
 
   // Keyboard nav state
   const [conflictPending, setConflictPending] = useState<{type: 'class' | 'teacher'; day: number; hour: number; teacherId: string; classId: string; conflictClasses?: string[]; conflictTeacherId?: string;} | null>(null);
+  const [clipboardItems, setClipboardItems] = useState<{uid: string, type: 'class' | 'teacher', val: string}[]>([]);
   const [dragConflict, setDragConflict] = useState<{
     type: 'class' | 'teacher';
-    source: { id: string; day: number; hour: number; val: string };
+    source: { id?: string; day?: number; hour?: number; val: string; clipboardUid?: string };
     target: { id: string; day: number; hour: number; val: string };
   } | null>(null);
   const [focusedCell, setFocusedCell] = useState<{rowIdx: number, cIdx: number} | null>(null);
@@ -898,10 +899,11 @@ export default function App() {
     }
   };
 
-  const doesClassMatchItem = useCallback((cls: string, q: string) => {
+  const doesClassMatchItem = useCallback((cls: string, q: string, strictMode: boolean = false) => {
     if (!q) return true;
     const normQ = normalizeGreek(q);
     if (normalizeGreek(cls).includes(normQ)) return true;
+    if (strictMode) return false;
 
     const cSchedule = classSchedule[cls] || {};
     for (let d = 0; d < 5; d++) {
@@ -919,11 +921,11 @@ export default function App() {
     return false;
   }, [classSchedule, teachers]);
 
-  const doesClassMatchSearch = useCallback((cls: string, tags: string[], currentQ: string) => {
+  const doesClassMatchSearch = useCallback((cls: string, tags: string[], currentQ: string, strictMode: boolean = false) => {
     if (tags.length === 0 && !currentQ) return true;
     const queries = [...tags];
     if (currentQ) queries.push(currentQ);
-    return queries.some(q => doesClassMatchItem(cls, q));
+    return queries.some(q => doesClassMatchItem(cls, q, strictMode));
   }, [doesClassMatchItem]);
   
   const doesTeacherMatchSearch = useCallback((teacher: Teacher, tags: string[], currentQ: string) => {
@@ -1015,9 +1017,7 @@ export default function App() {
                           e.dataTransfer.setData('application/json', JSON.stringify({ type: 'teacher', val, source: { id: cls, day: dIdx, hour: hIdx, val } }));
                         }}
                         onDragOver={(e) => e.preventDefault()}
-                        onDrop={(e) => {
-                                      e.stopPropagation();
-                                      if (val === 'BLOCK' || (val && isLocked(val, dIdx, hIdx, cls))) return;
+                        onDrop={(e) => { e.stopPropagation(); if (val === 'BLOCK' || (val && isLocked(val, dIdx, hIdx, cls))) return;
                           e.preventDefault();
                           try {
                             const data = JSON.parse(e.dataTransfer.getData('application/json'));
@@ -1026,6 +1026,11 @@ export default function App() {
                                 setDragConflict({ type: 'teacher', source: data.source, target: { id: cls, day: dIdx, hour: hIdx, val } });
                               } else {
                                 updateClassCell(cls, dIdx, hIdx, data.val);
+                                            if (data.source.clipboardUid) {
+                                              setClipboardItems(prev => prev.filter(i => i.uid !== data.source.clipboardUid));
+                                            } else if (data.source.id !== undefined && data.source.day !== undefined && data.source.hour !== undefined) {
+                                              executeClassCellUpdate(data.source.id, data.source.day, data.source.hour, "");
+                                            }
                               }
                             }
                           } catch (err) {}
@@ -1344,7 +1349,7 @@ export default function App() {
                   )}
                   <div className="flex gap-5 items-start w-max">
             {Object.entries(classesByGrade).map(([grade, gradeClasses]) => {
-              const filteredClasses = gradeClasses.filter(cls => doesClassMatchSearch(cls, searchTags, searchQuery));
+              const filteredClasses = gradeClasses.filter(cls => doesClassMatchSearch(cls, searchTags, searchQuery, viewMode === 'mixed-grid'));
               if (filteredClasses.length === 0) return null;
               
               return (
@@ -1407,9 +1412,7 @@ export default function App() {
                                   draggable={!!val && val !== 'BLOCK' && !isLocked(teacher.id, dIdx, hIdx, val)}
                                   onDragStart={(e) => e.dataTransfer.setData('application/json', JSON.stringify({ type: 'class', val, source: { id: teacher.id, day: dIdx, hour: hIdx, val } }))}
                                   onDragOver={(e) => e.preventDefault()}
-                                  onDrop={(e) => {
-                                      e.stopPropagation();
-                                      if (val === 'BLOCK' || (val && isLocked(teacher.id, dIdx, hIdx, val))) return;
+                                  onDrop={(e) => { e.stopPropagation(); if (val === 'BLOCK' || (val && isLocked(teacher.id, dIdx, hIdx, val))) return;
                                     e.preventDefault();
                                     try { 
                                       const data = JSON.parse(e.dataTransfer.getData('application/json')); 
@@ -1417,7 +1420,12 @@ export default function App() {
                                         if (val && val !== data.val && data.source) {
                                           setDragConflict({ type: 'class', source: data.source, target: { id: teacher.id, day: dIdx, hour: hIdx, val } });
                                         } else {
-                                          updateCell(teacher.id, dIdx, hIdx, data.val); 
+                                          updateCell(teacher.id, dIdx, hIdx, data.val);
+                                            if (data.source.clipboardUid) {
+                                              setClipboardItems(prev => prev.filter(i => i.uid !== data.source.clipboardUid));
+                                            } else if (data.source.id !== undefined && data.source.day !== undefined && data.source.hour !== undefined) {
+                                              executeCellUpdate(data.source.id, data.source.day, data.source.hour, "");
+                                            } 
                                         }
                                       }
                                     } catch (err) {}
@@ -1565,9 +1573,7 @@ export default function App() {
                                       e.dataTransfer.setData('application/json', JSON.stringify({ type: 'class', val: firstClass, source: { id: teacher.id, day: dIdx, hour: hIdx, val: firstClass } }));
                                     }}
                                     onDragOver={(e) => e.preventDefault()}
-                                    onDrop={(e) => {
-                                      e.stopPropagation();
-                                      if (firstClass === 'BLOCK' || (firstClass && isLocked(teacher.id, dIdx, hIdx, firstClass))) return;
+                                    onDrop={(e) => { e.stopPropagation(); if (firstClass === 'BLOCK' || (firstClass && isLocked(teacher.id, dIdx, hIdx, firstClass))) return;
                                       e.preventDefault();
                                       try {
                                         const data = JSON.parse(e.dataTransfer.getData('application/json'));
@@ -1576,6 +1582,11 @@ export default function App() {
                                             setDragConflict({ type: 'class', source: data.source, target: { id: teacher.id, day: dIdx, hour: hIdx, val: firstClass } });
                                           } else {
                                             updateCell(teacher.id, dIdx, hIdx, data.val);
+                                            if (data.source.clipboardUid) {
+                                              setClipboardItems(prev => prev.filter(i => i.uid !== data.source.clipboardUid));
+                                            } else if (data.source.id !== undefined && data.source.day !== undefined && data.source.hour !== undefined) {
+                                              executeCellUpdate(data.source.id, data.source.day, data.source.hour, "");
+                                            }
                                           }
                                         }
                                       } catch (err) {}
@@ -1679,9 +1690,7 @@ export default function App() {
                           e.dataTransfer.setData('application/json', JSON.stringify({ type: 'teacher', val, source: { id: cls, day: dIdx, hour: hIdx, val } }));
                         }}
                         onDragOver={(e) => e.preventDefault()}
-                        onDrop={(e) => {
-                                      e.stopPropagation();
-                                      if (val === 'BLOCK' || (val && isLocked(val, dIdx, hIdx, cls))) return;
+                        onDrop={(e) => { e.stopPropagation(); if (val === 'BLOCK' || (val && isLocked(val, dIdx, hIdx, cls))) return;
                                       e.preventDefault();
                                       try {
                                         const data = JSON.parse(e.dataTransfer.getData('application/json'));
@@ -1690,6 +1699,11 @@ export default function App() {
                                             setDragConflict({ type: 'teacher', source: data.source, target: { id: cls, day: dIdx, hour: hIdx, val } });
                                           } else {
                                             updateClassCell(cls, dIdx, hIdx, data.val);
+                                            if (data.source.clipboardUid) {
+                                              setClipboardItems(prev => prev.filter(i => i.uid !== data.source.clipboardUid));
+                                            } else if (data.source.id !== undefined && data.source.day !== undefined && data.source.hour !== undefined) {
+                                              executeClassCellUpdate(data.source.id, data.source.day, data.source.hour, "");
+                                            }
                                           }
                                         }
                                       } catch (err) {}
@@ -1767,11 +1781,14 @@ export default function App() {
         </div>
         )}
         </div>
+
+
       </main>
 
+
       {/* Footer Validation Bar */}
-      <footer className="shrink-0 bg-white border-t border-slate-200 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)] h-16 flex items-center px-6 z-50 justify-between relative">
-        <div className="flex-1 flex items-center gap-4 overflow-hidden whitespace-nowrap h-full">
+      <footer className="shrink-0 bg-white border-t border-slate-200 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)] min-h-[5rem] py-2 flex items-center px-6 z-50 justify-between relative gap-6">
+        <div className="flex-1 flex flex-col justify-center max-w-[30%]">
            {errors.length === 0 ? (
              <div className="flex items-center gap-2 text-emerald-600 font-medium">
                <CheckCircle2 className="w-5 h-5 flex-shrink-0" />
@@ -1790,6 +1807,56 @@ export default function App() {
            )}
         </div>
         
+        {/* CLIPBOARD DOCK IN FOOTER */}
+        <div className="flex-1 flex gap-4 overflow-x-auto items-center h-full border-l border-slate-200 pl-6">
+           <div className="flex flex-col items-center justify-center gap-1 text-slate-500 border-r border-slate-200 pr-4 shrink-0">
+             <List className="w-5 h-5 text-blue-500" />
+             <span className="font-semibold text-[10px] tracking-wider uppercase">Προχειρο</span>
+           </div>
+           
+           {/* Drop zone for clipboard */}
+           <div 
+             className="flex-1 flex gap-2 items-center min-w-[200px] h-12 rounded-lg border-2 border-dashed border-slate-300 p-1.5 bg-slate-50 transition-colors overflow-x-auto overflow-y-hidden"
+             onDragOver={(e) => { e.preventDefault(); e.currentTarget.classList.add('border-blue-400', 'bg-blue-50'); }}
+             onDragLeave={(e) => { e.currentTarget.classList.remove('border-blue-400', 'bg-blue-50'); }}
+             onDrop={(e) => {
+               e.currentTarget.classList.remove('border-blue-400', 'bg-blue-50');
+               e.preventDefault();
+               e.stopPropagation();
+               try {
+                 const data = JSON.parse(e.dataTransfer.getData('application/json'));
+                 if (data.type && data.val) {
+                   setClipboardItems(prev => [...prev, { uid: Math.random().toString(), type: data.type, val: data.val }]);
+                   
+                   if (data.source && data.source.id !== undefined && data.source.day !== undefined && data.source.hour !== undefined) {
+                     if (data.type === 'class') {
+                        executeCellUpdate(data.source.id, data.source.day, data.source.hour, "");
+                     } else if (data.type === 'teacher') {
+                        executeClassCellUpdate(data.source.id, data.source.day, data.source.hour, "");
+                     }
+                   }
+                 }
+               } catch (err) {}
+             }}
+           >
+             {clipboardItems.length === 0 && <span className="text-slate-400 text-xs mx-auto select-none pointer-events-none truncate">Σύρετε κάρτες για προσωρινή αποθήκευση</span>}
+             {clipboardItems.map(item => (
+                <div 
+                  key={item.uid}
+                  draggable
+                  onDragStart={(e) => {
+                    e.dataTransfer.setData('application/json', JSON.stringify({ type: item.type, val: item.val, source: { clipboardUid: item.uid, val: item.val } }));
+                  }}
+                  className={`px-2.5 py-1 rounded shadow-sm text-xs font-semibold cursor-grab active:cursor-grabbing border whitespace-nowrap ${
+                    item.type === 'class' ? getClassColor(item.val) : getTeacherColor(item.val)
+                  }`}
+                >
+                  {item.type === 'class' ? item.val : teachers.find(t => t.id === item.val)?.name || item.val}
+                </div>
+             ))}
+           </div>
+        </div>
+
         {errors.length > 0 && (
            <button 
              onClick={() => setShowErrorsModal(true)}
@@ -1879,6 +1946,17 @@ export default function App() {
                   } else {
                     updateClassCell(dragConflict.target.id, dragConflict.target.day, dragConflict.target.hour, dragConflict.source.val);
                   }
+                  
+                  if (dragConflict.source.clipboardUid) {
+                     setClipboardItems(prev => prev.filter(i => i.uid !== dragConflict.source.clipboardUid));
+                  } else if (dragConflict.source.id !== undefined && dragConflict.source.day !== undefined && dragConflict.source.hour !== undefined) {
+                     if (dragConflict.type === 'class') {
+                       executeCellUpdate(dragConflict.source.id, dragConflict.source.day, dragConflict.source.hour, "");
+                     } else {
+                       executeClassCellUpdate(dragConflict.source.id, dragConflict.source.day, dragConflict.source.hour, "");
+                     }
+                  }
+                  
                   setDragConflict(null);
                 }}
                 className="w-full text-left px-4 py-3 rounded-lg border border-red-200 hover:border-red-500 hover:bg-red-50 transition-colors group"
@@ -1890,13 +1968,19 @@ export default function App() {
               <button
                 onClick={() => {
                   if (dragConflict.type === 'class') {
-                    // Update target first
                     updateCell(dragConflict.target.id, dragConflict.target.day, dragConflict.target.hour, dragConflict.source.val);
-                    // Update source
-                    updateCell(dragConflict.source.id, dragConflict.source.day, dragConflict.source.hour, dragConflict.target.val);
+                    if (dragConflict.source.clipboardUid) {
+                      setClipboardItems(prev => prev.map(i => i.uid === dragConflict.source.clipboardUid ? { ...i, val: dragConflict.target.val } : i));
+                    } else if (dragConflict.source.id !== undefined && dragConflict.source.day !== undefined && dragConflict.source.hour !== undefined) {
+                      updateCell(dragConflict.source.id, dragConflict.source.day, dragConflict.source.hour, dragConflict.target.val);
+                    }
                   } else {
                     updateClassCell(dragConflict.target.id, dragConflict.target.day, dragConflict.target.hour, dragConflict.source.val);
-                    updateClassCell(dragConflict.source.id, dragConflict.source.day, dragConflict.source.hour, dragConflict.target.val);
+                    if (dragConflict.source.clipboardUid) {
+                      setClipboardItems(prev => prev.map(i => i.uid === dragConflict.source.clipboardUid ? { ...i, val: dragConflict.target.val } : i));
+                    } else if (dragConflict.source.id !== undefined && dragConflict.source.day !== undefined && dragConflict.source.hour !== undefined) {
+                      updateClassCell(dragConflict.source.id, dragConflict.source.day, dragConflict.source.hour, dragConflict.target.val);
+                    }
                   }
                   setDragConflict(null);
                 }}
