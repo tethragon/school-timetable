@@ -102,8 +102,27 @@ export default function App() {
   });
     const [showInfoModal, setShowInfoModal] = useState(false);
   
-  const [searchQuery, setSearchQuery] = useState('');
-  const [searchTags, setSearchTags] = useState<string[]>([]);
+  const [viewSearches, setViewSearches] = useState<Record<string, { tags: string[], query: string }>>({});
+  
+  const currentSearch = viewSearches[viewMode] || { tags: [], query: '' };
+  const searchTags = currentSearch.tags;
+  const searchQuery = currentSearch.query;
+
+  const setSearchTags = useCallback((t: string[] | ((prev: string[]) => string[])) => {
+    setViewSearches(prev => {
+      const prevTags = prev[viewMode]?.tags || [];
+      const newTags = typeof t === 'function' ? t(prevTags) : t;
+      return { ...prev, [viewMode]: { query: prev[viewMode]?.query || '', ...prev[viewMode], tags: newTags } };
+    });
+  }, [viewMode]);
+
+  const setSearchQuery = useCallback((q: string | ((prev: string) => string)) => {
+    setViewSearches(prev => {
+      const prevQuery = prev[viewMode]?.query || '';
+      const newQuery = typeof q === 'function' ? q(prevQuery) : q;
+      return { ...prev, [viewMode]: { tags: prev[viewMode]?.tags || [], ...prev[viewMode], query: newQuery } };
+    });
+  }, [viewMode]);
   const [history, setHistory] = useState<HistoryAction[]>([]);
   const [lockedAssignments, setLockedAssignments] = useState<Record<string, boolean>>(() => {
     try {
@@ -1145,28 +1164,28 @@ export default function App() {
           {/* View Modes */}
           <div className="flex bg-slate-100 p-1 rounded-lg border border-slate-200">
             <button
-              onClick={() => { setViewMode('teacher'); setFocusedCell(null); setIsEditing(false); setSearchQuery(''); setSearchTags([]); }}
+              onClick={() => { setViewMode('teacher'); setFocusedCell(null); setIsEditing(false); }}
               className={`p-1.5 rounded-md transition-colors ${viewMode === 'teacher' ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-500 hover:text-slate-900 hover:bg-slate-200/50'}`}
               title="Εκπαιδευτικοί (Γραμμικά)"
             >
               <Users className="w-4 h-4" />
             </button>
             <button
-              onClick={() => { setViewMode('teacher-grid'); setFocusedCell(null); setIsEditing(false); setSearchQuery(''); setSearchTags([]); }}
+              onClick={() => { setViewMode('teacher-grid'); setFocusedCell(null); setIsEditing(false); }}
               className={`p-1.5 rounded-md transition-colors ${viewMode === 'teacher-grid' ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-500 hover:text-slate-900 hover:bg-slate-200/50'}`}
               title="Εκπαιδευτικοί (Πλέγμα)"
             >
               <LayoutGrid className="w-4 h-4" />
             </button>
             <button
-              onClick={() => { setViewMode('class-horizontal'); setFocusedCell(null); setIsEditing(false); setSearchQuery(''); setSearchTags([]); }}
+              onClick={() => { setViewMode('class-horizontal'); setFocusedCell(null); setIsEditing(false); }}
               className={`p-1.5 rounded-md transition-colors ${viewMode === 'class-horizontal' ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-500 hover:text-slate-900 hover:bg-slate-200/50'}`}
               title="Τμήματα (Γραμμικά)"
             >
               <List className="w-4 h-4" />
             </button>
             <button
-              onClick={() => { setViewMode('class-grid'); setFocusedCell(null); setIsEditing(false); setSearchQuery(''); setSearchTags([]); }}
+              onClick={() => { setViewMode('class-grid'); setFocusedCell(null); setIsEditing(false); }}
               className={`p-1.5 rounded-md transition-colors ${viewMode === 'class-grid' ? 'bg-white text-blue-700 shadow-sm' : 'text-slate-500 hover:text-slate-900 hover:bg-slate-200/50'}`}
               title="Τμήματα (Πλέγμα)"
             >
@@ -1456,7 +1475,7 @@ export default function App() {
                                     ${isFocused && !isEditing ? 'ring-2 ring-inset ring-blue-500 z-10 bg-blue-50' : ''}
                                     ${!isFocused && val ? `${clsColor} font-bold` : 'text-slate-500 hover:bg-slate-50'}`}
                                 >
-                                  <span className="line-clamp-2 leading-tight">{isBlocked ? <X className="w-5 h-5 opacity-50 mx-auto"/> : val}</span>
+                                  <span className="line-clamp-2 leading-tight">{isBlocked ? <X className="w-5 h-5 opacity-50 mx-auto"/> : cellClasses.join(', ')}</span>
                                   {val && isLocked(teacher.id, dIdx, hIdx, val) && <Lock className="w-2.5 h-2.5 absolute bottom-0.5 right-0.5 text-slate-700/60" />}
                                 </div>
                                 {isFocused && isEditing && (
@@ -1617,7 +1636,7 @@ export default function App() {
                                       ${isFocused && !isEditing ? 'ring-2 ring-inset ring-blue-500 z-10' : ''}
                                       ${cellColorClass}`}
                                   >
-                                    <span className="font-medium text-xs line-clamp-2 leading-tight text-center px-0.5">{isBlocked ? <X className="w-4 h-4 mx-auto opacity-50"/> : firstClass}</span>
+                                    <span className="font-medium text-xs line-clamp-2 leading-tight text-center px-0.5">{isBlocked ? <X className="w-4 h-4 mx-auto opacity-50"/> : val}</span>
                                   </div>
                                   
                                   {isFocused && isEditing && (
