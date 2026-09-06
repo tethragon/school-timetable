@@ -83,7 +83,7 @@ export function GroupsModal({ isOpen, onClose, crossClassGroups, setCrossClassGr
                                 className="flex-1 text-sm border-slate-300 rounded-md focus:border-blue-500 focus:ring-blue-500"
                               >
                                 <option value="">-- Επιλογή --</option>
-                                {teachers.map(t => (
+                                {teachers.filter(t => t.subject === subject || t.id === tId).map(t => (
                                   <option key={t.id} value={t.id}>{t.name}</option>
                                 ))}
                               </select>
