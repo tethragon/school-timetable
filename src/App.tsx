@@ -522,8 +522,10 @@ export default function App() {
     if (optVal === 'BLOCK') return <span className="text-red-500 font-semibold flex items-center gap-1.5"><Ban className="w-3.5 h-3.5"/> Αποκλεισμός (Χ)</span>;
     const label = getOptionLabel(optVal);
     
-    if (['class-grid', 'class-horizontal'].includes(viewMode)) {
-      if (!isVirtualTeacher(optVal)) {
+    const isTeacher = teachers.some(t => t.id === optVal) || optVal === "ΑΓΓΛΙΚΑ" || optVal === "Β' ΞΕΝΗ ΓΛΩΣΣΑ" || optVal === "ΠΛΗΡΟΦΟΡΙΚΗ";
+    const isClass = classes.includes(optVal);
+
+    if (isTeacher && !isVirtualTeacher(optVal)) {
         const busyClasses = schedule[optVal]?.[d]?.[h] || [];
         if (busyClasses.length > 0) {
           return (
@@ -533,8 +535,18 @@ export default function App() {
             </div>
           );
         }
-      }
+    } else if (isClass) {
+        const busyTeacher = classSchedule[optVal]?.[d]?.[h];
+        if (busyTeacher && busyTeacher !== 'BLOCK') {
+          return (
+            <div className="flex justify-between items-center text-slate-400">
+              <span className="truncate pr-2">{label}</span>
+              <span className="text-[10px] bg-slate-100 px-1 py-0.5 rounded truncate max-w-[80px]" title={"με " + getOptionLabel(busyTeacher)}>με {getOptionLabel(busyTeacher)}</span>
+            </div>
+          );
+        }
     }
+    
     return <span>{label}</span>;
   };
 
