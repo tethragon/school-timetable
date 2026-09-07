@@ -1,6 +1,6 @@
 import { ScheduleData, Teacher, SubjectRule } from '../types';
 
-export function exportToCSV(schedule: ScheduleData, teachers: Teacher[], classes: string[], subjectRules: SubjectRule[], classTutors: Record<string, string> = {}, crossClassGroups: Record<string, Record<string, string[]>> = {}) {
+export function exportToCSV(schedule: ScheduleData, teachers: Teacher[], classes: string[], subjectRules: SubjectRule[], classTutors: Record<string, string> = {}, crossClassGroups: Record<string, Record<string, string[]>> = {}, subAssignments: Record<string, Record<number, Record<number, string>>> = {}) {
     const header = ['Εκπαιδευτικός', 'Max Ώρες'];
     const DAYS = ['Δευτέρα', 'Τρίτη', 'Τετάρτη', 'Πέμπτη', 'Παρασκευή'];
     for (let d = 0; d < 5; d++) {
@@ -52,6 +52,16 @@ export function exportToCSV(schedule: ScheduleData, teachers: Teacher[], classes
         });
     });
 
+    Object.entries(subAssignments).forEach(([classId, days]) => {
+        Object.entries(days).forEach(([dayStr, hours]) => {
+            Object.entries(hours).forEach(([hourStr, tId]) => {
+                if (tId) {
+                    rows.push(`SUB_ASSIGNMENT,"${classId}",${dayStr},${hourStr},"${tId}"`);
+                }
+            });
+        });
+    });
+
     // Add BOM for Excel/Calc greek characters support
     const blob = new Blob(['\uFEFF' + rows.join('\n')], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
@@ -80,7 +90,7 @@ export function parseCSVRow(str: string): string[] {
     return result.map(s => s.replace(/^"|"$/g, '').trim());
 }
 
-export function importFromCSV(file: File, currentTeachers: Teacher[]): Promise<{ schedule: ScheduleData, teachers?: Teacher[], classes?: string[], subjectRules?: SubjectRule[], classTutors?: Record<string, string>, crossClassGroups?: Record<string, Record<string, string[]>> }> {
+export function importFromCSV(file: File, currentTeachers: Teacher[]): Promise<{ schedule: ScheduleData, teachers?: Teacher[], classes?: string[], subjectRules?: SubjectRule[], classTutors?: Record<string, string>, crossClassGroups?: Record<string, Record<string, string[]>>, subAssignments?: Record<string, Record<number, Record<number, string>>> }> {
     return new Promise((resolve, reject) => {
         const reader = new FileReader();
         reader.onload = (e) => {
@@ -93,6 +103,7 @@ export function importFromCSV(file: File, currentTeachers: Teacher[]): Promise<{
                 let loadedSubjectRules: SubjectRule[] = [];
                 let loadedClassTutors: Record<string, string> = {};
                 let loadedCrossClassGroups: Record<string, Record<string, string[]>> = {};
+                let loadedSubAssignments: Record<string, Record<number, Record<number, string>>> = {};
                 let hasSystemData = false;
 
                 // Pass 1: Find system data
@@ -126,6 +137,14 @@ export function importFromCSV(file: File, currentTeachers: Teacher[]): Promise<{
                             const tIds = cols[3].split(',').filter(Boolean);
                             if (!loadedCrossClassGroups[subject]) loadedCrossClassGroups[subject] = {};
                             loadedCrossClassGroups[subject][grade] = tIds;
+                        } else if (cols[0] === 'SUB_ASSIGNMENT' && cols.length >= 5) {
+                            const cId = cols[1];
+                            const d = Number(cols[2]);
+                            const h = Number(cols[3]);
+                            const tId = cols[4];
+                            if (!loadedSubAssignments[cId]) loadedSubAssignments[cId] = {};
+                            if (!loadedSubAssignments[cId][d]) loadedSubAssignments[cId][d] = {};
+                            loadedSubAssignments[cId][d][h] = tId;
                         }
                     }
                 }
@@ -167,7 +186,8 @@ export function importFromCSV(file: File, currentTeachers: Teacher[]): Promise<{
                     classes: hasSystemData ? loadedClasses : undefined,
                     subjectRules: hasSystemData ? loadedSubjectRules : undefined,
                     classTutors: hasSystemData ? loadedClassTutors : undefined,
-                    crossClassGroups: hasSystemData ? loadedCrossClassGroups : undefined
+                    crossClassGroups: hasSystemData ? loadedCrossClassGroups : undefined,
+                    subAssignments: hasSystemData ? loadedSubAssignments : undefined
                 });
             } catch (err) {
                 reject(err);

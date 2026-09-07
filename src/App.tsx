@@ -1166,6 +1166,11 @@ export default function App() {
           }
         }
         
+        if (data.subAssignments) {
+          setSubAssignments(data.subAssignments);
+        } else {
+          setSubAssignments({});
+        }
         setSchedule(data.schedule);
         setHistory([]);
       } catch (err) {
@@ -1652,7 +1657,7 @@ export default function App() {
           </button>
           
           <button 
-            onClick={() => exportToCSV(schedule, teachers, classes, subjectRules, classTutors, crossClassGroups)}
+            onClick={() => exportToCSV(schedule, teachers, classes, subjectRules, classTutors, crossClassGroups, subAssignments)}
             className="p-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md transition-colors shadow-sm shrink-0"
             title="Εξαγωγή CSV"
           >
@@ -2439,7 +2444,7 @@ export default function App() {
               <div>
                 <p className="text-xs text-slate-400 font-medium tracking-wider mb-1">ΕΚΔΟΣΗ</p>
                 {/* Version Number - Update this manually when deploying new versions */}
-                <span className="inline-block px-3 py-1 bg-blue-50 text-blue-700 rounded-full font-bold text-sm">v.2.2.20260907</span>
+                <span className="inline-block px-3 py-1 bg-blue-50 text-blue-700 rounded-full font-bold text-sm">v.2.2.1.20260907</span>
               </div>
             </div>
           </div>
