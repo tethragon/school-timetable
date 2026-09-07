@@ -108,6 +108,23 @@ export default function App() {
     return {};
   });
   
+  const [subAssignments, setSubAssignments] = useState<Record<string, Record<number, Record<number, string>>>>(() => {
+    try {
+      const saved = localStorage.getItem('school_sub_assignments');
+      if (saved) return JSON.parse(saved);
+    } catch (e) {
+      console.error('Failed to load sub-assignments', e);
+    }
+    return {};
+  });
+
+  useEffect(() => {
+    localStorage.setItem('school_sub_assignments', JSON.stringify(subAssignments));
+  }, [subAssignments]);
+
+
+
+  
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [showErrorsModal, setShowErrorsModal] = useState(false);
   const [viewMode, setViewMode] = useState<'teacher' | 'teacher-grid' | 'class-horizontal' | 'class-grid'>(() => {
@@ -348,6 +365,70 @@ export default function App() {
   // Keyboard nav state
   const [conflictPending, setConflictPending] = useState<{type: 'class' | 'teacher'; day: number; hour: number; teacherId: string; classId: string; conflictClasses?: string[]; conflictTeacherId?: string;} | null>(null);
   const [clipboardItems, setClipboardItems] = useState<{uid: string, type: 'class' | 'teacher', val: string}[]>([]);
+  
+  const [contextMenu, setContextMenu] = useState<{
+    visible: boolean;
+    x: number;
+    y: number;
+    classId: string;
+    day: number;
+    hour: number;
+    virtualTeacherId: string;
+  } | null>(null);
+  useEffect(() => {
+    if (!contextMenu?.visible) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setContextMenu(null);
+        return;
+      }
+      if (e.key.length === 1) { // A single character typed
+        const char = e.key.toLowerCase();
+        // find all buttons
+        const buttons = Array.from(document.querySelectorAll('.context-menu-btn')) as HTMLButtonElement[];
+        
+        // Find the index of the currently focused button
+        const activeIdx = buttons.findIndex(b => b === document.activeElement);
+        
+        // Find next button that matches starting from after the current one (wrap around)
+        let found = false;
+        for (let i = 1; i <= buttons.length; i++) {
+          const idx = (activeIdx + i) % buttons.length;
+          const text = buttons[idx].textContent?.trim().toLowerCase() || '';
+          const nameMatch = text.replace(/^👤\s*/, '');
+          
+          if (nameMatch.startsWith(char)) {
+            buttons[idx].focus();
+            found = true;
+            break;
+          }
+        }
+      } else if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        const buttons = Array.from(document.querySelectorAll('.context-menu-btn')) as HTMLButtonElement[];
+        const activeIdx = buttons.findIndex(b => b === document.activeElement);
+        if (activeIdx < buttons.length - 1) buttons[activeIdx + 1].focus();
+        else if (buttons.length > 0) buttons[0].focus();
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        const buttons = Array.from(document.querySelectorAll('.context-menu-btn')) as HTMLButtonElement[];
+        const activeIdx = buttons.findIndex(b => b === document.activeElement);
+        if (activeIdx > 0) buttons[activeIdx - 1].focus();
+        else if (buttons.length > 0) buttons[buttons.length - 1].focus();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    
+    // Auto-focus first button initially
+    setTimeout(() => {
+      const firstBtn = document.querySelector('.context-menu-btn') as HTMLButtonElement;
+      if (firstBtn) firstBtn.focus();
+    }, 10);
+    
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [contextMenu]);
+
+
   const [dragConflict, setDragConflict] = useState<{
     type: 'class' | 'teacher';
     source: { id?: string; day?: number; hour?: number; val: string; clipboardUid?: string };
@@ -411,6 +492,8 @@ export default function App() {
 
   useEffect(() => {
     const handleKeyDownGlobal = (e: KeyboardEvent) => {
+      // If context menu is open, let its own handler manage keys
+      if (document.querySelector('.context-menu-btn')) return;
       if ((e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === 'z' || e.key.toLowerCase() === 'ζ' || e.code === 'KeyZ')) {
         if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
           return;
@@ -423,6 +506,12 @@ export default function App() {
     return () => window.removeEventListener('keydown', handleKeyDownGlobal);
   }, [handleUndo]);
 
+
+  const isVirtualTeacher = (tId: string) => {
+    if (tId === 'BLOCK') return true;
+    const t = teachers.find(x => x.id === tId);
+    return (t && (t.maxHours === 0 || t.isVirtual)) || tId === "ΑΓΓΛΙΚΑ" || tId === "Β' ΞΕΝΗ ΓΛΩΣΣΑ" || tId === "ΠΛΗΡΟΦΟΡΙΚΗ";
+  };
 
   const getTeacherEffectiveSchedule = (teacherId: string, currentSchedule: ScheduleData = schedule) => {
     const tSchedule = currentSchedule[teacherId] ? JSON.parse(JSON.stringify(currentSchedule[teacherId])) : {};
@@ -450,6 +539,35 @@ export default function App() {
         }
       });
     });
+
+    Object.entries(subAssignments).forEach(([classId, days]) => {
+      Object.entries(days).forEach(([dStr, hours]) => {
+        Object.entries(hours).forEach(([hStr, tId]) => {
+          if (tId === teacherId) {
+            const d = Number(dStr);
+            const h = Number(hStr);
+            
+            let hasVirtualSubject = false;
+            Object.entries(currentSchedule).forEach(([schedTeacherId, schedDays]) => {
+                if (isVirtualTeacher(schedTeacherId) && schedTeacherId !== "ΑΓΓΛΙΚΑ" && schedTeacherId !== "Β' ΞΕΝΗ ΓΛΩΣΣΑ" && schedTeacherId !== "ΠΛΗΡΟΦΟΡΙΚΗ") {
+                    if (schedDays[d]?.[h]?.includes(classId)) {
+                        hasVirtualSubject = true;
+                    }
+                }
+            });
+            
+            if (hasVirtualSubject) {
+                if (!tSchedule[d]) tSchedule[d] = {};
+                if (!tSchedule[d][h]) tSchedule[d][h] = [];
+                if (!tSchedule[d][h].includes(classId)) {
+                  tSchedule[d][h].push(classId);
+                }
+            }
+          }
+        });
+      });
+    });
+
     return tSchedule;
   };
 
@@ -485,6 +603,8 @@ export default function App() {
   };
 
   const executeCellUpdate = (teacherId: string, day: number, hour: number, classId: string, mode: 'move' | 'coteach' = 'move') => {
+    const effectiveClasses = classId === "" ? (getTeacherEffectiveSchedule(teacherId)[day]?.[hour] || []) : [];
+
     const teacher = teachers.find(t => t.id === teacherId);
     const teacherName = teacher ? teacher.name : teacherId;
     const description = classId === "" 
@@ -521,13 +641,18 @@ export default function App() {
       }
       return newState;
     });
+
+    setSubAssignments(prevSub => {
+        const newSub = JSON.parse(JSON.stringify(prevSub));
+        if (newSub[classId]?.[day]?.[hour]) {
+            delete newSub[classId][day][hour];
+            return newSub;
+        }
+        return prevSub;
+    });
   };
 
-  const isVirtualTeacher = (tId: string) => {
-    if (tId === 'BLOCK') return true;
-    const t = teachers.find(x => x.id === tId);
-    return (t && t.maxHours === 0) || tId === "ΑΓΓΛΙΚΑ" || tId === "Β' ΞΕΝΗ ΓΛΩΣΣΑ" || tId === "ΠΛΗΡΟΦΟΡΙΚΗ";
-  };
+
 
   const updateClassCell = (classId: string, day: number, hour: number, newTeacherId: string) => {
     if (!newTeacherId) {
@@ -630,6 +755,15 @@ export default function App() {
 
       return newState;
     });
+
+    setSubAssignments(prevSub => {
+        const newSub = JSON.parse(JSON.stringify(prevSub));
+        if (newSub[classId]?.[day]?.[hour]) {
+            delete newSub[classId][day][hour];
+            return newSub;
+        }
+        return prevSub;
+    });
   };
 
   const getPrefix = (c: string) => c.match(/^[^\d]+/)?.[0] || c;
@@ -730,6 +864,7 @@ export default function App() {
     : ["", ...uniqueClassGridTeacherOptions];
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (contextMenu?.visible) return;
     if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
       return;
     }
@@ -1161,6 +1296,9 @@ export default function App() {
                   const teacherColorClass = isBlocked ? "bg-slate-200 text-slate-400" : (val ? (isTutor ? "bg-yellow-300 text-yellow-950 font-bold border-l-4 border-yellow-500 shadow-inner" : getTeacherColor(val)) : "");
                   const isFocused = focusedCell?.rowIdx === rowIdx && focusedCell?.cIdx === cIdx && focusedCell?.type === 'class';
                   const isSearchMatch = isCellMatch(val, teacherName, searchTags, searchQuery);
+                  const subAssignedTeacherId = subAssignments[cls]?.[dIdx]?.[hIdx];
+                  const subAssignedTeacher = subAssignedTeacherId ? teachers.find(t => t.id === subAssignedTeacherId) : null;
+                  const isVirtualCell = val && isVirtualTeacher(val);
                   
                   return (
                     <td key={dIdx} className="p-0 relative h-10 border-b border-r last:border-r-0 border-slate-200 bg-white">
@@ -1199,15 +1337,39 @@ export default function App() {
                           setSelectedCells([]);
                           handleCellClick(rowIdx, cIdx, val, 'class');
                         }}
+                        onContextMenu={(e) => {
+                          if (isVirtualCell && val !== "ΑΓΓΛΙΚΑ" && val !== "Β' ΞΕΝΗ ΓΛΩΣΣΑ" && val !== "ΠΛΗΡΟΦΟΡΙΚΗ") {
+                            e.preventDefault();
+                            setFocusedCell({ rowIdx, cIdx, type: 'class' });
+                            setContextMenu({
+                              visible: true,
+                              x: e.clientX,
+                              y: e.clientY,
+                              classId: cls,
+                              day: dIdx,
+                              hour: hIdx,
+                              virtualTeacherId: val
+                            });
+                          }
+                        }}
                         title={getCrossClassGroupTooltip(val, cls)}
                         className={`w-full h-full px-1 flex items-center justify-center text-xs text-center cursor-pointer outline-none select-none transition-colors
                           ${selectedCells.some(sc => sc.r === rowIdx && sc.c === cIdx && sc.type === 'class') ? '!ring-2 !ring-inset !ring-blue-600 !bg-blue-200 !text-blue-900 font-bold z-20' : ''}
                           ${isFocused && !isEditing ? 'ring-2 ring-inset ring-blue-500 z-10 bg-blue-50' : ''}
                           ${isSearchMatch && !isFocused ? 'ring-2 ring-inset ring-amber-400 bg-amber-100 z-10 font-bold text-amber-900' : (!isFocused && val ? `${teacherColorClass} font-medium` : 'text-slate-500 hover:bg-slate-50')}`}
                       >
-                        <span className="line-clamp-2 leading-tight">
-                          {isBlocked ? <X className="w-5 h-5 opacity-50 mx-auto"/> : teacherName}
-                        </span>
+                        {isBlocked ? <X className="w-5 h-5 opacity-50 mx-auto"/> : (
+                          isVirtualCell && val !== "ΑΓΓΛΙΚΑ" && val !== "Β' ΞΕΝΗ ΓΛΩΣΣΑ" && val !== "ΠΛΗΡΟΦΟΡΙΚΗ" ? (
+                            <div className="flex flex-col items-center justify-center w-full h-full overflow-hidden">
+                              <span className="truncate w-full text-center text-[11px] font-semibold block px-0.5">{teacherName}</span>
+                              {subAssignedTeacher ? (
+                                <span className="text-[10px] font-bold text-slate-700 bg-white/50 px-1 rounded-sm shadow-sm mt-0.5 max-w-full truncate block leading-none py-0.5 shrink-0">({subAssignedTeacher.name})</span>
+                              ) : (
+                                <span className="text-[10px] text-red-500 font-bold bg-white/50 px-1 rounded-sm mt-0.5 max-w-full truncate block leading-none py-0.5 animate-pulse shrink-0">(! Κενό)</span>
+                              )}
+                            </div>
+                          ) : <span className="line-clamp-2 leading-tight">{teacherName}</span>
+                        )}
                         {val && isLocked(val, dIdx, hIdx, cls) && <Lock className="w-2.5 h-2.5 absolute bottom-0.5 right-0.5 text-slate-700/60" />}
                       </div>
                       
@@ -2166,6 +2328,67 @@ export default function App() {
       })()}
 
       {/* All Errors Modal */}
+      
+      {contextMenu && contextMenu.visible && (
+        <div 
+          className="fixed inset-0 z-50"
+          onClick={() => setContextMenu(null)}
+          onContextMenu={(e) => { e.preventDefault(); setContextMenu(null); }}
+        >
+          <div 
+            className="absolute bg-white rounded-lg shadow-xl border border-slate-200 w-64 overflow-hidden"
+            style={{ 
+              top: Math.min(contextMenu.y, window.innerHeight - 300), 
+              left: Math.min(contextMenu.x, window.innerWidth - 250) 
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="bg-slate-100 px-3 py-2 border-b border-slate-200">
+              <p className="text-xs font-semibold text-slate-500 uppercase">Αναθεση Πραγματικου Εκπαιδευτικου</p>
+              <p className="text-sm font-bold text-slate-800">{teachers.find(t => t.id === contextMenu.virtualTeacherId)?.name || contextMenu.virtualTeacherId}</p>
+            </div>
+            <div className="max-h-64 overflow-y-auto p-1 custom-scrollbar">
+              <button
+                className="context-menu-btn w-full text-left px-3 py-2 text-sm hover:bg-slate-50 focus:bg-slate-50 focus:ring-2 focus:ring-inset focus:ring-blue-400 rounded-md transition-colors text-slate-500 italic flex items-center justify-between"
+                onClick={() => {
+                  setSubAssignments(prev => {
+                    const newState = {...prev};
+                    if (newState[contextMenu.classId]?.[contextMenu.day]?.[contextMenu.hour]) {
+                      delete newState[contextMenu.classId][contextMenu.day][contextMenu.hour];
+                    }
+                    return newState;
+                  });
+                  setContextMenu(null);
+                }}
+              >
+                ΚΑΜΙΑ ΑΝΑΘΕΣΗ (Αφαίρεση)
+              </button>
+              {teachers.filter(t => t.maxHours > 0 && !t.isVirtual).map(t => (
+                <button
+                  key={t.id}
+                  className={`context-menu-btn w-full text-left px-3 py-2 text-sm hover:bg-blue-50 focus:bg-blue-50 focus:ring-2 focus:ring-inset focus:ring-blue-400 rounded-md transition-colors ${subAssignments[contextMenu.classId]?.[contextMenu.day]?.[contextMenu.hour] === t.id ? 'bg-blue-100 text-blue-800 font-bold' : 'text-slate-700'}`}
+                  onClick={() => {
+                    setSubAssignments(prev => ({
+                      ...prev,
+                      [contextMenu.classId]: {
+                        ...(prev[contextMenu.classId] || {}),
+                        [contextMenu.day]: {
+                          ...(prev[contextMenu.classId]?.[contextMenu.day] || {}),
+                          [contextMenu.hour]: t.id
+                        }
+                      }
+                    }));
+                    setContextMenu(null);
+                  }}
+                >
+                  👤 {t.name}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
       {showErrorsModal && (
         <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[100] flex items-center justify-center p-4" onClick={() => setShowErrorsModal(false)}>
           <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[80vh] flex flex-col" onClick={e => e.stopPropagation()}>
@@ -2216,7 +2439,7 @@ export default function App() {
               <div>
                 <p className="text-xs text-slate-400 font-medium tracking-wider mb-1">ΕΚΔΟΣΗ</p>
                 {/* Version Number - Update this manually when deploying new versions */}
-                <span className="inline-block px-3 py-1 bg-blue-50 text-blue-700 rounded-full font-bold text-sm">v.2.05.20260906</span>
+                <span className="inline-block px-3 py-1 bg-blue-50 text-blue-700 rounded-full font-bold text-sm">v.2.2.20260907</span>
               </div>
             </div>
           </div>

@@ -3,7 +3,8 @@ export type Teacher = {
   name: string;
   abbreviation?: string;
   maxHours: number;
-  subject?: string; // Προαιρετικό μάθημα / ειδικότητα
+  subject?: string;
+  isVirtual?: boolean; // NEW: Indicates this is a virtual placeholder (e.g. "Social Studies")
 };
 
 export type SubjectRule = {

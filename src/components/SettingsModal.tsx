@@ -228,23 +228,26 @@ export function SettingsModal({
                         <option key={r.id} value={r.name}>{r.name}</option>
                       ))}
                     </select>
-                    <div className="flex items-center gap-2 w-24">
+                    <div className="flex items-center gap-2 w-24 shrink-0">
                       <input 
-                        type="number" 
+                        type="number"
                         value={t.maxHours}
                         onChange={(e) => updateTeacher(t.id, 'maxHours', parseInt(e.target.value) || 0)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') {
-                          e.preventDefault();
-                          addTeacher();
-                        }
-                      }}
-                        className="w-16 px-2 py-1.5 border border-slate-300 rounded-md text-sm text-center focus:ring-2 focus:ring-blue-500 focus:outline-none"
-                        min="0"
+                        className="w-14 px-2 py-1.5 border border-slate-300 rounded-md text-sm text-center focus:ring-2 focus:ring-blue-500 focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                       />
                       <span className="text-xs text-slate-500">ώρες</span>
                     </div>
-                    <button onClick={() => removeTeacher(t.id)} className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors">
+                    <div className="flex flex-col items-center justify-center w-14 shrink-0 gap-1 group">
+                      <input 
+                        type="checkbox"
+                        checked={t.isVirtual || false}
+                        onChange={(e) => updateTeacher(t.id, 'isVirtual', e.target.checked)}
+                        className="w-4 h-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500 cursor-pointer"
+                        title="Επιλέξτε το αν αυτό είναι εικονικό μάθημα (π.χ. Social Studies)"
+                      />
+                      <span className="text-[10px] text-slate-400 font-medium opacity-0 group-hover:opacity-100 transition-opacity">Εικονικό</span>
+                    </div>
+                    <button onClick={() => removeTeacher(t.id)} className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-md transition-colors shrink-0">
                       <Trash2 className="w-4 h-4" />
                     </button>
                   </div>
