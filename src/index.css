@@ -24,9 +24,9 @@
   }
 }
 
+
 @media print {
   @page {
-    /* Forcing landscape mode directly from the browser if supported */
     size: A4 landscape;
     margin: 10mm;
   }
@@ -36,52 +36,122 @@
     overflow: visible !important;
     background-color: white !important;
   }
-
+  
   body {
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
   }
 
-  /* Remove all constraints that prevent printing multiple pages */
   .h-screen, .h-full, .min-h-0, .overflow-hidden, .overflow-auto, .overflow-y-auto, .overflow-x-auto, main {
     height: auto !important;
     max-height: none !important;
     overflow: visible !important;
   }
-
+  
   header {
     display: none !important;
   }
-
-  /* Reset background colors for cleaner printing */
+  
   .bg-slate-50 {
     background-color: white !important;
   }
 
-  /* Keep the table structure intact but adjust sizes for print */
-  .w-max, .min-w-0 {
+  /* Flatten the flex layouts so tables stack vertically */
+  .print-block {
+    display: block !important;
     width: 100% !important;
-    min-width: unset !important;
-    max-width: none !important;
-  }
-  
-  /* Make text a bit smaller to fit width */
-  .text-xs {
-    font-size: 0.65rem !important;
-  }
-  
-  .text-sm {
-    font-size: 0.75rem !important;
-  }
-  
-  /* Prevent awkward page breaks */
-  tr, .break-inside-avoid {
-    break-inside: avoid;
-    page-break-inside: avoid;
+    margin: 0 !important;
   }
 
-  /* Optional: Force grid borders for clarity */
-  .border, .border-l, .border-b, .border-r, .border-t {
-    border-color: #cbd5e1 !important;
+  /* Each grid becomes 1 full page */
+  .print-grid-wrapper {
+    display: block !important;
+    width: 100% !important;
+    max-width: none !important;
+    page-break-after: always;
+    page-break-inside: avoid;
+    break-after: page;
+    break-inside: avoid;
+    margin: 0 0 10mm 0 !important;
+    border: none !important;
+    box-shadow: none !important;
+  }
+
+  /* Force table to fill the page evenly */
+  .print-grid-wrapper table {
+    width: 100% !important;
+    table-layout: fixed !important;
+    border: 3px solid #000000 !important; /* Thicker, darker border */
+    border-collapse: collapse !important;
+  }
+
+  /* Scale up all typography for the 4-in-1 print to be readable */
+  .print-grid-wrapper th, 
+  .print-grid-wrapper td {
+    border: 2px solid #000000 !important; /* Darker inner borders */
+    overflow: hidden;
+  }
+  
+  .print-grid-wrapper th {
+    font-size: 1.1rem !important;
+  }
+  
+  .print-grid-wrapper td {
+    font-size: 1.1rem !important;
+    height: 60px !important; /* Make rows taller to fill the page height better */
+  }
+
+  .print-grid-wrapper .text-xs,
+  .print-grid-wrapper .text-sm {
+    font-size: 1rem !important;
+  }
+
+  /* Make sure select inputs don't look weird */
+  .print-grid-wrapper select {
+    appearance: none;
+    -webkit-appearance: none;
+    border: none;
+    background: transparent;
+    font-size: 1rem !important;
+  }
+
+  /* Specific column widths for a balanced look (6 columns total) */
+  .print-grid-wrapper th:first-child,
+  .print-grid-wrapper td:first-child {
+    width: 10% !important;
+  }
+  .print-grid-wrapper th:not(:first-child),
+  .print-grid-wrapper td:not(:first-child) {
+    width: 18% !important;
+  }
+}
+
+@media print {
+  .print-grid-wrapper td {
+    padding: 0 !important;
+    height: 60px !important;
+  }
+  .print-grid-wrapper th {
+    padding: 8px !important;
+    border: 2px solid #000000 !important;
+  }
+  .print-grid-wrapper td {
+    position: relative !important;
+    padding: 0 !important;
+    height: 60px !important;
+  }
+  .print-grid-wrapper td > div {
+    position: absolute !important;
+    top: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    width: 100% !important;
+    height: 100% !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    padding: 4px !important;
+    box-sizing: border-box !important;
   }
 }

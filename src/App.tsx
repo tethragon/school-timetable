@@ -1114,7 +1114,7 @@ export default function App() {
     const isComplete = filledHours === 40;
 
     return (
-      <div key={cls} className="bg-white border border-slate-200 rounded-lg shadow-sm w-max relative">
+      <div key={cls} className="bg-white border border-slate-200 rounded-lg shadow-sm w-max relative print-grid-wrapper">
         <div className={`px-3 py-2 flex items-center justify-between border-b border-slate-200 rounded-t-lg ${clsColor} gap-4`}>
           <div className="flex items-center gap-2">
              <span className="font-bold text-slate-800 text-sm">Τμήμα {cls}</span>
@@ -1502,7 +1502,7 @@ export default function App() {
       <main className="flex-1 bg-slate-50 relative flex flex-col overflow-hidden">
         <div className={`p-6 w-full flex-1 flex flex-col min-w-0 ${['class-grid', 'teacher-grid', 'mixed-grid'].includes(viewMode) ? 'overflow-auto' : 'overflow-hidden'}`}>
 {['class-grid', 'teacher-grid', 'mixed-grid'].includes(viewMode) ? (
-            <div className="flex flex-col gap-8 pb-8 w-max">
+            <div className="flex flex-col gap-8 pb-8 w-max print-block">
               {['class-grid', 'mixed-grid'].includes(viewMode) && (
                 <div className="w-full">
                   {viewMode === 'mixed-grid' && (
@@ -1511,13 +1511,13 @@ export default function App() {
                       Τμήματα
                     </h2>
                   )}
-                  <div className="flex gap-5 items-start w-max">
+                  <div className="flex gap-5 items-start w-max print-block">
             {Object.entries(classesByGrade).map(([grade, gradeClasses]) => {
               const filteredClasses = gradeClasses.filter(cls => doesClassMatchSearch(cls, searchTags, searchQuery, viewMode === 'mixed-grid'));
               if (filteredClasses.length === 0) return null;
               
               return (
-              <div key={grade} className="flex flex-col gap-4 shrink-0">
+              <div key={grade} className="flex flex-col gap-4 shrink-0 print-block">
                 {filteredClasses.map(cls => {
                   return renderClassCard(cls);
                 })}
@@ -1548,7 +1548,7 @@ export default function App() {
               const isOverHours = teacher.maxHours > 0 && currentHours > teacher.maxHours;
               const hoursDisplay = teacher.maxHours === 0 ? currentHours : `${currentHours}/${teacher.maxHours}`;
               return (
-                <div key={teacher.id} className="bg-white border border-slate-200 rounded-lg shadow-sm w-max relative shrink-0">
+                <div key={teacher.id} className="bg-white border border-slate-200 rounded-lg shadow-sm w-max relative shrink-0 print-grid-wrapper">
                   <div className="px-4 py-1.5 font-bold text-center border-b border-slate-200 rounded-t-lg bg-slate-100 text-slate-700 flex justify-between items-center gap-4">
                     <span className="truncate max-w-[12rem]">{teacher.name}</span>
                     <span className={`text-xs px-1.5 py-0.5 rounded flex-shrink-0 ${isOverHours ? 'bg-red-100 text-red-700' : 'bg-white border border-slate-200'}`}>{hoursDisplay}</span>
