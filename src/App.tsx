@@ -571,9 +571,10 @@ export default function App() {
     return tSchedule;
   };
 
-  const updateCell = (teacherId: string, day: number, hour: number, classId: string) => {
+  const updateCell = (teacherId: string, day: number, hour: number, classId: string, sourceToClear?: any) => {
     if (!classId) {
       executeCellUpdate(teacherId, day, hour, classId, 'move');
+      if (sourceToClear) clearDragSource(sourceToClear);
       return;
     }
     if (!isVirtualTeacher(teacherId)) {
@@ -581,25 +582,26 @@ export default function App() {
       const actualBusy = busyClasses.filter(c => c !== classId);
       if (actualBusy.length > 0) {
         setConflictPending({
-          type: 'teacher', day, hour, teacherId, classId, conflictClasses: actualBusy
+          type: 'teacher', day, hour, teacherId, classId, conflictClasses: actualBusy, sourceToClear
         });
         return;
       }
     } else if (teacherId === "ΑΓΓΛΙΚΑ" || teacherId === "Β' ΞΕΝΗ ΓΛΩΣΣΑ") {
-       const grade = classId.match(/^[^\d]+/)?.[0] || classId;
+       const grade = classId.match(/^[^d]+/)?.[0] || classId;
        const groupTeachers = crossClassGroups[teacherId]?.[grade] || [];
        for (const tId of groupTeachers) {
           const busyClasses = getTeacherEffectiveSchedule(tId)[day]?.[hour] || [];
           const actualBusy = busyClasses.filter(c => c !== classId);
           if (actualBusy.length > 0) {
             setConflictPending({
-              type: 'teacher', day, hour, teacherId: tId, classId, conflictClasses: actualBusy
+              type: 'teacher', day, hour, teacherId: tId, classId, conflictClasses: actualBusy, sourceToClear
             });
             return;
           }
        }
     }
     executeCellUpdate(teacherId, day, hour, classId, 'move');
+    if (sourceToClear) clearDragSource(sourceToClear);
   };
 
   const clearDragSource = (sourceToClear: { id?: string, day?: number, hour?: number, clipboardUid?: string, type?: 'class'|'teacher' }) => {
@@ -666,9 +668,10 @@ export default function App() {
 
 
 
-  const updateClassCell = (classId: string, day: number, hour: number, newTeacherId: string) => {
+  const updateClassCell = (classId: string, day: number, hour: number, newTeacherId: string, sourceToClear?: any) => {
     if (!newTeacherId) {
       executeClassCellUpdate(classId, day, hour, newTeacherId, 'move');
+      if (sourceToClear) clearDragSource(sourceToClear);
       return;
     }
     if (!isVirtualTeacher(newTeacherId)) {
@@ -676,25 +679,26 @@ export default function App() {
       const actualBusy = busyClasses.filter(c => c !== classId);
       if (actualBusy.length > 0) {
         setConflictPending({
-          type: 'class', day, hour, teacherId: newTeacherId, classId, conflictClasses: actualBusy
+          type: 'class', day, hour, teacherId: newTeacherId, classId, conflictClasses: actualBusy, sourceToClear
         });
         return;
       }
     } else if (newTeacherId === "ΑΓΓΛΙΚΑ" || newTeacherId === "Β' ΞΕΝΗ ΓΛΩΣΣΑ") {
-       const grade = classId.match(/^[^\d]+/)?.[0] || classId;
+       const grade = classId.match(/^[^d]+/)?.[0] || classId;
        const groupTeachers = crossClassGroups[newTeacherId]?.[grade] || [];
        for (const tId of groupTeachers) {
           const busyClasses = getTeacherEffectiveSchedule(tId)[day]?.[hour] || [];
           const actualBusy = busyClasses.filter(c => c !== classId);
           if (actualBusy.length > 0) {
             setConflictPending({
-              type: 'class', day, hour, teacherId: tId, classId, conflictClasses: actualBusy
+              type: 'class', day, hour, teacherId: tId, classId, conflictClasses: actualBusy, sourceToClear
             });
             return;
           }
        }
     }
     executeClassCellUpdate(classId, day, hour, newTeacherId, 'move');
+    if (sourceToClear) clearDragSource(sourceToClear);
   };
 
   const executeClassCellUpdate = (classId: string, day: number, hour: number, newTeacherId: string, mode: 'move' | 'coteach' = 'move') => {
@@ -1335,12 +1339,7 @@ export default function App() {
                               if (val && val !== data.val && data.source) {
                                 setDragConflict({ type: 'teacher', source: data.source, target: { id: cls, day: dIdx, hour: hIdx, val } });
                               } else {
-                                updateClassCell(cls, dIdx, hIdx, data.val);
-                                            if (data.source.clipboardUid) {
-                                              setClipboardItems(prev => prev.filter(i => i.uid !== data.source.clipboardUid));
-                                            } else if (data.source.id !== undefined && data.source.day !== undefined && data.source.hour !== undefined) {
-                                              executeClassCellUpdate(data.source.id, data.source.day, data.source.hour, "");
-                                            }
+                                updateClassCell(cls, dIdx, hIdx, data.val, { ...data.source, type: data.type });
                               }
                             }
                           } catch (err) {}
@@ -2443,7 +2442,7 @@ export default function App() {
               <div>
                 <p className="text-xs text-slate-400 font-medium tracking-wider mb-1">ΕΚΔΟΣΗ</p>
                 {/* Version Number - Update this manually when deploying new versions */}
-                <span className="inline-block px-3 py-1 bg-blue-50 text-blue-700 rounded-full font-bold text-sm">v.2.2.5.20260908</span>
+                <span className="inline-block px-3 py-1 bg-blue-50 text-blue-700 rounded-full font-bold text-sm">v.2.2.6.20260908</span>
               </div>
             </div>
           </div>
