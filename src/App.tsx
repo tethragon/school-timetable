@@ -363,7 +363,7 @@ export default function App() {
   };
 
   // Keyboard nav state
-  const [conflictPending, setConflictPending] = useState<{type: 'class' | 'teacher'; day: number; hour: number; teacherId: string; classId: string; conflictClasses?: string[]; conflictTeacherId?: string;} | null>(null);
+  const [conflictPending, setConflictPending] = useState<{type: 'class' | 'teacher'; day: number; hour: number; teacherId: string; classId: string; conflictClasses?: string[]; conflictTeacherId?: string; sourceToClear?: { id?: string, day?: number, hour?: number, clipboardUid?: string, type?: 'class'|'teacher' };} | null>(null);
   const [clipboardItems, setClipboardItems] = useState<{uid: string, type: 'class' | 'teacher', val: string}[]>([]);
   
   const [contextMenu, setContextMenu] = useState<{
@@ -600,6 +600,18 @@ export default function App() {
        }
     }
     executeCellUpdate(teacherId, day, hour, classId, 'move');
+  };
+
+  const clearDragSource = (sourceToClear: { id?: string, day?: number, hour?: number, clipboardUid?: string, type?: 'class'|'teacher' }) => {
+    if (sourceToClear.clipboardUid) {
+      setClipboardItems(prev => prev.filter(i => i.uid !== sourceToClear.clipboardUid));
+    } else if (sourceToClear.id !== undefined && sourceToClear.day !== undefined && sourceToClear.hour !== undefined) {
+      if (sourceToClear.type === 'class') {
+        executeCellUpdate(sourceToClear.id, sourceToClear.day, sourceToClear.hour, "");
+      } else {
+        executeClassCellUpdate(sourceToClear.id, sourceToClear.day, sourceToClear.hour, "");
+      }
+    }
   };
 
   const executeCellUpdate = (teacherId: string, day: number, hour: number, classId: string, mode: 'move' | 'coteach' = 'move') => {
@@ -1751,12 +1763,7 @@ export default function App() {
                                         if (val && val !== data.val && data.source) {
                                           setDragConflict({ type: 'class', source: data.source, target: { id: teacher.id, day: dIdx, hour: hIdx, val } });
                                         } else {
-                                          updateCell(teacher.id, dIdx, hIdx, data.val);
-                                            if (data.source.clipboardUid) {
-                                              setClipboardItems(prev => prev.filter(i => i.uid !== data.source.clipboardUid));
-                                            } else if (data.source.id !== undefined && data.source.day !== undefined && data.source.hour !== undefined) {
-                                              executeCellUpdate(data.source.id, data.source.day, data.source.hour, "");
-                                            } 
+                                          updateCell(teacher.id, dIdx, hIdx, data.val, { ...data.source, type: data.type }); 
                                         }
                                       }
                                     } catch (err) {}
@@ -1912,12 +1919,7 @@ export default function App() {
                                           if (firstClass && firstClass !== data.val && data.source) {
                                             setDragConflict({ type: 'class', source: data.source, target: { id: teacher.id, day: dIdx, hour: hIdx, val: firstClass } });
                                           } else {
-                                            updateCell(teacher.id, dIdx, hIdx, data.val);
-                                            if (data.source.clipboardUid) {
-                                              setClipboardItems(prev => prev.filter(i => i.uid !== data.source.clipboardUid));
-                                            } else if (data.source.id !== undefined && data.source.day !== undefined && data.source.hour !== undefined) {
-                                              executeCellUpdate(data.source.id, data.source.day, data.source.hour, "");
-                                            }
+                                            updateCell(teacher.id, dIdx, hIdx, data.val, { ...data.source, type: data.type });
                                           }
                                         }
                                       } catch (err) {}
@@ -2029,12 +2031,7 @@ export default function App() {
                                           if (val && val !== data.val && data.source) {
                                             setDragConflict({ type: 'teacher', source: data.source, target: { id: cls, day: dIdx, hour: hIdx, val } });
                                           } else {
-                                            updateClassCell(cls, dIdx, hIdx, data.val);
-                                            if (data.source.clipboardUid) {
-                                              setClipboardItems(prev => prev.filter(i => i.uid !== data.source.clipboardUid));
-                                            } else if (data.source.id !== undefined && data.source.day !== undefined && data.source.hour !== undefined) {
-                                              executeClassCellUpdate(data.source.id, data.source.day, data.source.hour, "");
-                                            }
+                                            updateClassCell(cls, dIdx, hIdx, data.val, { ...data.source, type: data.type });
                                           }
                                         }
                                       } catch (err) {}
@@ -2186,11 +2183,21 @@ export default function App() {
                   onDragStart={(e) => {
                     e.dataTransfer.setData('application/json', JSON.stringify({ type: item.type, val: item.val, source: { clipboardUid: item.uid, val: item.val } }));
                   }}
-                  className={`px-2.5 py-1 rounded shadow-sm text-xs font-semibold cursor-grab active:cursor-grabbing border whitespace-nowrap ${
+                  className={`px-2.5 py-1 rounded shadow-sm text-xs font-semibold cursor-grab active:cursor-grabbing border whitespace-nowrap flex items-center gap-1.5 group ${
                     item.type === 'class' ? getClassColor(item.val) : getTeacherColor(item.val)
                   }`}
                 >
-                  {item.type === 'class' ? item.val : teachers.find(t => t.id === item.val)?.name || item.val}
+                  <span>{item.type === 'class' ? item.val : teachers.find(t => t.id === item.val)?.name || item.val}</span>
+                  <button 
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setClipboardItems(prev => prev.filter(i => i.uid !== item.uid));
+                    }}
+                    className="opacity-0 group-hover:opacity-100 hover:bg-black/10 rounded transition-opacity"
+                    title="Διαγραφή από το πρόχειρο"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
                 </div>
              ))}
            </div>
@@ -2217,6 +2224,7 @@ export default function App() {
                   } else {
                     executeCellUpdate(conflictPending.teacherId, conflictPending.day, conflictPending.hour, conflictPending.classId, 'move');
                   }
+                  if (conflictPending.sourceToClear) clearDragSource(conflictPending.sourceToClear);
                   setConflictPending(null);
                 }}
                 className="w-full text-left px-4 py-3 rounded-lg border border-blue-200 hover:border-blue-500 hover:bg-blue-50 transition-colors group"
@@ -2232,6 +2240,7 @@ export default function App() {
                   } else {
                     executeCellUpdate(conflictPending.teacherId, conflictPending.day, conflictPending.hour, conflictPending.classId, 'coteach');
                   }
+                  if (conflictPending.sourceToClear) clearDragSource(conflictPending.sourceToClear);
                   setConflictPending(null);
                 }}
                 className="w-full text-left px-4 py-3 rounded-lg border border-purple-200 hover:border-purple-500 hover:bg-purple-50 transition-colors group"
@@ -2272,19 +2281,9 @@ export default function App() {
               <button
                 onClick={() => {
                   if (dragConflict.type === 'class') {
-                    updateCell(dragConflict.target.id, dragConflict.target.day, dragConflict.target.hour, dragConflict.source.val);
+                    updateCell(dragConflict.target.id, dragConflict.target.day, dragConflict.target.hour, dragConflict.source.val, { ...dragConflict.source, type: dragConflict.type });
                   } else {
-                    updateClassCell(dragConflict.target.id, dragConflict.target.day, dragConflict.target.hour, dragConflict.source.val);
-                  }
-                  
-                  if (dragConflict.source.clipboardUid) {
-                     setClipboardItems(prev => prev.filter(i => i.uid !== dragConflict.source.clipboardUid));
-                  } else if (dragConflict.source.id !== undefined && dragConflict.source.day !== undefined && dragConflict.source.hour !== undefined) {
-                     if (dragConflict.type === 'class') {
-                       executeCellUpdate(dragConflict.source.id, dragConflict.source.day, dragConflict.source.hour, "");
-                     } else {
-                       executeClassCellUpdate(dragConflict.source.id, dragConflict.source.day, dragConflict.source.hour, "");
-                     }
+                    updateClassCell(dragConflict.target.id, dragConflict.target.day, dragConflict.target.hour, dragConflict.source.val, { ...dragConflict.source, type: dragConflict.type });
                   }
                   
                   setDragConflict(null);
@@ -2444,7 +2443,7 @@ export default function App() {
               <div>
                 <p className="text-xs text-slate-400 font-medium tracking-wider mb-1">ΕΚΔΟΣΗ</p>
                 {/* Version Number - Update this manually when deploying new versions */}
-                <span className="inline-block px-3 py-1 bg-blue-50 text-blue-700 rounded-full font-bold text-sm">v.2.2.1.20260907</span>
+                <span className="inline-block px-3 py-1 bg-blue-50 text-blue-700 rounded-full font-bold text-sm">v.2.2.5.20260908</span>
               </div>
             </div>
           </div>
